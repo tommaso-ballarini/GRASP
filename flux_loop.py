@@ -47,10 +47,10 @@ def _get_first_image(content: dict) -> str | None:
 def _build_reasoner() -> Qwen3VLReasoning:
     """Istanzia Qwen3VLReasoning con i parametri da Config."""
     return Qwen3VLReasoning(
-        model_path=Config.Models.VLM_MODEL,
+        model_path=Config.Models.QWEN3_MODEL,  # ← Qwen3-VL path
         device="cuda",
-        torch_dtype=torch.float16 if Config.GPU.USE_FP16 else torch.float32,
-        attn_implementation="sdpa",
+        torch_dtype=torch.bfloat16,            # Qwen3-VL è addestrato in bfloat16, non float16
+        attn_implementation="flash_attention_2", # Qwen3 supporta FA2, più efficiente di sdpa
         seed=Config.Generate.SEED,
     )
 

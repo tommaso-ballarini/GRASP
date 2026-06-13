@@ -109,7 +109,6 @@ class Config:
           VLM_MODEL    → verify.py + refine.py loop  (MiniCPM-o-2_6)
           QWEN3_MODEL  → flux_loop.py reasoner        (Qwen3-VL-8B-Instruct)
           JUDGE_MODEL  → judge.py Final Judge          (InternVL3_5-8B)
-          SDXL_MODEL   → generazione SDXL baseline
           FLUX_MODEL   → generazione FLUX (flux_loop.py)
           IP_ADAPTER_* → IP-Adapter per SDXL
         """
@@ -138,11 +137,14 @@ class Config:
             local_dirname="stable-diffusion-xl-base-1.0",
         )
 
-        FLUX_MODEL = _model_path(
-            repo_id="ostris/FLUX.1-schnell-2MP",   # placeholder: aggiorna con repo corretto
-            local_dirname="FLUX.2-klein-9B",
+        _FLUX_PATH = os.environ.get(
+            "R2P_FLUX_MODEL",
+            os.path.join(os.environ.get("R2P_MODELS_BASE", ""), "FLUX.2-klein-9B")
+                if os.environ.get("R2P_MODELS_BASE") else "black-forest-labs/FLUX.1-schnell"
         )
 
+        FLUX_MODEL = _FLUX_PATH
+        
         # --- IP-Adapter ---
         IP_ADAPTER_REPO = "h94/IP-Adapter"
         IP_ADAPTER_SUBFOLDER = "sdxl_models"

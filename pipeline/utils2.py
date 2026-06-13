@@ -10,10 +10,10 @@ from pathlib import Path
 
 def cleanup_gpu():
     """Aggressively free GPU memory."""
+    gc.collect()                          # prima: distruggi oggetti Python senza riferimenti
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-    gc.collect()
+        torch.cuda.empty_cache()          # poi: restituisci la memoria liberata al sistema
+        torch.cuda.synchronize()          # infine: attendi che CUDA abbia completato
 
 def print_memory_stats(label=""):
     """Print GPU memory statistics."""

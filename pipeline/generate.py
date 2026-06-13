@@ -81,7 +81,8 @@ class Generator:
         # Target context dal Config
         target_context = Config.get_background_template()
                 
-        for concept_id, content in concept_dict.items():
+        for concept_id in my_keys:
+            content = concept_dict[concept_id]
             print(f"\n🎨 Elaborazione concetto: {concept_id}")
             try:
                 # 1. Recupero dell'immagine sorgente

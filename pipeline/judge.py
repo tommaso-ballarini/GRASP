@@ -51,11 +51,6 @@ from pipeline.utils2 import cleanup_gpu
 # verify.py + refine.py loop → MiniCPM / Qwen3-VL (Config.VLM_MODEL)
 # judge.py (Final Judge)    → InternVL3_5-8B (independent evaluation)
 
-DEFAULT_JUDGE_MODEL_PATH = (
-    "/leonardo_work/IscrC_MUSE/tballari/models_cache/"
-    "huggingface/InternVL3_5-8B"
-)
-
 
 @dataclass
 class JudgeResult:
@@ -154,7 +149,7 @@ class FinalJudge:
         self.use_dino = use_dino
         self.use_clip = use_clip
         self.use_vqa = use_vqa
-        self.vlm_model_path = vlm_model_path or DEFAULT_JUDGE_MODEL_PATH
+        self.vlm_model_path = vlm_model_path or Config.Models.JUDGE_MODEL
         self._torch_dtype = torch_dtype
         self._attn_implementation = attn_implementation
 
