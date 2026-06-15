@@ -85,7 +85,7 @@ def _query_single(reasoner, image: Image.Image, prompt: str):
     """
     msgs = reasoner.adapter.format_text_options_msgs(image, prompt)
     outputs, response_text = reasoner.model_interface.chat(msgs)
-    confidence = reasoner.conf_calculator.calculate_confidence(outputs, task="verify")
+    confidence = reasoner.conf_calculator.calculate_confidence(outputs, task="recognition")
     return confidence, response_text
 
 
@@ -98,7 +98,7 @@ def _query_pairwise(reasoner, gen_image: Image.Image, ref_image: Image.Image, pr
         gen_image, ref_image, prompt
     )
     outputs, response_text = reasoner.model_interface.chat(msgs)
-    confidence = reasoner.conf_calculator.calculate_confidence(outputs, task="pairwise_verify")
+    confidence = reasoner.conf_calculator.calculate_confidence(outputs, task="recognition")
     return confidence, response_text
 
 

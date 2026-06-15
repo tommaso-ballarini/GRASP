@@ -1,18 +1,18 @@
 import torch
 import numpy as np
 from PIL import Image
+from typing import Dict, List, Optional, Tuple
 from transformers import CLIPModel, CLIPProcessor
+from config import Config
 
 # =============================================================================
 # SEZIONE 1: CLIP SCORE CALCULATOR (Per Cross-Modal Attribute Verification - Eq. 5)
 # =============================================================================
 
 class ClipScoreCalculator:
-    def __init__(self, device="cuda", model_name="openai/clip-vit-large-patch14-336"):
-        """
-        Gestisce il caricamento e il calcolo degli score con CLIP.
-        """
+    def __init__(self, device="cuda", model_name=None):
         self.device = device
+        model_name = model_name or Config.Models.CLIP_MODEL_336
         print(f"Loading CLIP model: {model_name}...")
         self.clip_model = CLIPModel.from_pretrained(model_name).to(self.device)
         self.feature_extractor = CLIPProcessor.from_pretrained(model_name)
@@ -28,23 +28,36 @@ class ClipScoreCalculator:
 
     def get_clip_image_feature(self, image_path_or_obj):
         """Extracts and normalizes CLIP image features."""
+        import torch.nn.functional as F
         if isinstance(image_path_or_obj, str):
             image = Image.open(image_path_or_obj).convert('RGB')
         else:
             image = image_path_or_obj.convert('RGB')
-
         inputs = self.feature_extractor(images=image, return_tensors="pt")
         with torch.no_grad():
-            image_features = self.clip_model.get_image_features(inputs['pixel_values'].to(self.device))
-        return image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+            output = self.clip_model.get_image_features(inputs['pixel_values'].to(self.device))
+        # get_image_features può restituire un tensore o un oggetto — gestiamo entrambi
+        if hasattr(output, 'image_embeds'):
+            features = output.image_embeds
+        elif hasattr(output, 'pooler_output'):
+            features = output.pooler_output
+        else:
+            features = output
+        return F.normalize(features, p=2, dim=-1)
 
     def get_text_features(self, formatted_sentences):
         """Extracts and normalizes CLIP text features."""
+        import torch.nn.functional as F
         inputs = self.feature_extractor(text=formatted_sentences, return_tensors="pt", padding=True, truncation=True).to(self.device)
         with torch.no_grad():
-            text_features = self.clip_model.get_text_features(inputs["input_ids"], inputs["attention_mask"])
-        text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)   
-        return text_features.detach()
+            output = self.clip_model.get_text_features(inputs["input_ids"], inputs["attention_mask"])
+        if hasattr(output, 'text_embeds'):
+            features = output.text_embeds
+        elif hasattr(output, 'pooler_output'):
+            features = output.pooler_output
+        else:
+            features = output
+        return F.normalize(features, p=2, dim=-1)
 
     def compute_attribute_score(self, image, attribute_list):
         """

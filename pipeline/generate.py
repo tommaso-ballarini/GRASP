@@ -12,16 +12,21 @@ from PIL import Image
 from diffusers import DiffusionPipeline
 import diffusers.models.attention_processor
 import torch.nn.functional as F
+import time
+from tqdm import tqdm
 
 from config import Config
 # Importiamo il nuovo costruttore di prompt
 from pipeline.prompts.flux_prompts import build_flux_prompt
 
 class Generator:
-    def __init__(self, database_path: str, output_dir: str, device: str = "cuda:0"):
+    def __init__(self, database_path: str, output_dir: str, device: str = "cuda:0",
+             num_shards: int = 1, shard_index: int = 0):
         """
         Inizializza il generatore mantenendo la compatibilità con full_loop.py.
         """
+        self.num_shards = num_shards
+        self.shard_index = shard_index
         self.database_path = database_path
         self.output_dir = output_dir
         self.device = device
@@ -55,8 +60,9 @@ class Generator:
         self.pipe.enable_model_cpu_offload()
         print("✅ FLUX caricato con successo (CPU Offload attivato).")
 
-    # Sostituisci la firma di generate_all con questa:
-    def generate_all(self, num_shards: int = 1, shard_index: int = 0):
+    def generate_all(self):
+        num_shards = self.num_shards
+        shard_index = self.shard_index
         with open(self.database_path, 'r', encoding='utf-8') as f:
             database = json.load(f)
             
@@ -78,12 +84,17 @@ class Generator:
         print(f"🖥️  Worker {shard_index}/{num_shards} - Assegnati {len(my_keys)} concetti su {len(all_keys)} totali.")
         stats = {"total": len(my_keys), "success": 0, "failed": 0}
         
+        prompts_log = {}  # concept_id -> prompt FLUX
+
         # Target context dal Config
         target_context = Config.get_background_template()
                 
-        for concept_id in my_keys:
+
+        t_start = time.time()
+        for i, concept_id in enumerate(tqdm(my_keys, desc="Generating", unit="img")):
             content = concept_dict[concept_id]
-            print(f"\n🎨 Elaborazione concetto: {concept_id}")
+            t_concept = time.time()
+            print(f"\n🎨 [{i+1}/{len(my_keys)}] Elaborazione concetto: {concept_id}")
             try:
                 # 1. Recupero dell'immagine sorgente
                 # Gestiamo sia il formato vecchio che nuovo
@@ -123,13 +134,31 @@ class Generator:
                 out_path = os.path.join(self.output_dir, f"{concept_id}_generated.png")
                 output_img.save(out_path)
                 
+                prompts_log[concept_id] = {
+                    "flux_prompt": flux_prompt,
+                    "source_image": source_image_path,
+                    "output_image": out_path,
+                }
+
+                elapsed = time.time() - t_concept
+                total_elapsed = time.time() - t_start
+                avg = total_elapsed / (i + 1)
+                remaining = avg * (len(my_keys) - i - 1)
                 stats["success"] += 1
-                print(f"   ✅ Generato e salvato: {os.path.basename(out_path)}")
-                
+                print(f"   ✅ Salvato: {os.path.basename(out_path)} "
+                    f"| {elapsed:.1f}s | avg {avg:.1f}s/img | ETA {remaining/60:.1f}min")
             except Exception as e:
-                print(f"   ❌ Errore durante la generazione di {concept_id}: {str(e)}")
+                print(f"   ❌ Errore {concept_id}: {str(e)}")
                 stats["failed"] += 1
-                
+
+        prompts_path = os.path.join(self.output_dir, "prompts.json")
+        with open(prompts_path, "w", encoding="utf-8") as f:
+            json.dump(prompts_log, f, indent=4, ensure_ascii=False)
+        print(f"   📝 Prompt log salvato → {prompts_path}")
+
+        total = time.time() - t_start
+        print(f"\n⏱️  Tempo totale: {total/60:.1f}min | "
+            f"avg {total/max(stats['success'],1):.1f}s/img")
         return stats
 
     def cleanup(self):

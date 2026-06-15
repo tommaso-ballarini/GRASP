@@ -24,27 +24,34 @@ import os
 # ---------------------------------------------------------------------------
 # Helper: risolve path modelli in modo cluster-agnostico
 # ---------------------------------------------------------------------------
-# In cluster mode, imposta R2P_MODELS_BASE nel tuo .bashrc o script SLURM:
-#   export R2P_MODELS_BASE=/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface
-#
-# In locale, lascia vuoto → i modelli vengono scaricati da HuggingFace Hub
-#   (usa repo-id stringa, es. "openbmb/MiniCPM-o-2_6")
-
 _MODELS_BASE = os.environ.get("R2P_MODELS_BASE", "")
 
 def _model_path(repo_id: str, local_dirname: str) -> str:
     """
     Restituisce il path locale se R2P_MODELS_BASE è impostato,
     altrimenti il repo-id HuggingFace (per download automatico).
-
-    Args:
-        repo_id:       es. "openbmb/MiniCPM-o-2_6"
-        local_dirname: nome cartella sotto R2P_MODELS_BASE,
-                       es. "MiniCPM-o-2_6"
     """
     if _MODELS_BASE:
         return os.path.join(_MODELS_BASE, local_dirname)
     return repo_id
+
+
+# ---------------------------------------------------------------------------
+# FIX NameError: le variabili cluster-aware vengono calcolate a livello di
+# MODULO (fuori da Config), così sono disponibili a tutte le inner class
+# senza dover referenziare Config.Cluster dall'interno di Config stessa.
+# Python non permette alle inner class di vedere le classi-sorella definite
+# prima nella stessa outer class durante la valutazione del corpo della classe.
+# ---------------------------------------------------------------------------
+_CLUSTER_MODE = os.environ.get("R2P_CLUSTER_MODE", "false").lower() == "true"
+
+if _CLUSTER_MODE:
+    _HOME_DIR = os.environ.get("HOME", "/home/user")
+    _BASE_DIR = os.path.join(_HOME_DIR, "R2P-GEN")
+    _DATA_BASE = os.path.join(_HOME_DIR, "data")
+else:
+    _BASE_DIR = "."
+    _DATA_BASE = "data"
 
 
 class Config:
@@ -53,29 +60,23 @@ class Config:
     # ========================================================================
     class Cluster:
         """Cluster mode detection and base paths."""
-
-        # Controllato via env: R2P_CLUSTER_MODE=true
-        MODE = os.environ.get("R2P_CLUSTER_MODE", "false").lower() == "true"
-
-        if MODE:
-            HOME_DIR = os.environ.get("HOME", "/home/user")
-            BASE_DIR = os.path.join(HOME_DIR, "R2P-GEN")
-            DATA_BASE = os.path.join(HOME_DIR, "data")
-        else:
-            BASE_DIR = "."
-            DATA_BASE = "data"
+        MODE     = _CLUSTER_MODE
+        BASE_DIR = _BASE_DIR
+        DATA_BASE = _DATA_BASE
+        # HOME_DIR solo in cluster mode (retrocompatibilità)
+        HOME_DIR = os.environ.get("HOME", "/home/user") if _CLUSTER_MODE else None
 
     # ========================================================================
     # BUILD_DATABASE CONFIGURATION
     # ========================================================================
     class BuildDatabase:
         """Configuration for pipeline/build_database.py"""
-
-        SOURCE_DATA_DIR = os.path.join(Cluster.DATA_BASE, "perva-data")
+        # Usa le variabili di modulo — non Config.Cluster (causa NameError)
+        SOURCE_DATA_DIR = os.path.join(_DATA_BASE, "perva-data")
         DATASET_SPLIT = "train"
 
         DEBUG_MODE = True
-        DEBUG_LIMIT = 5
+        DEBUG_LIMIT = 30
 
         USE_CLIP_CATEGORY = True
         USE_CLIP_SELECTION = True
@@ -90,7 +91,6 @@ class Config:
     # ========================================================================
     class Database:
         """Database file naming strategy."""
-
         # True  → "database.json"  (produzione)
         # False → "database_perva_{split}_{method}.json"  (test/dev)
         CANONICAL_NAME = True
@@ -104,13 +104,6 @@ class Config:
 
         In cluster mode: imposta R2P_MODELS_BASE nel SLURM script o .bashrc.
         In locale: i repo_id vengono scaricati automaticamente da HuggingFace.
-
-        Ruoli:
-          VLM_MODEL    → verify.py + refine.py loop  (MiniCPM-o-2_6)
-          QWEN3_MODEL  → flux_loop.py reasoner        (Qwen3-VL-8B-Instruct)
-          JUDGE_MODEL  → judge.py Final Judge          (InternVL3_5-8B)
-          FLUX_MODEL   → generazione FLUX (flux_loop.py)
-          IP_ADAPTER_* → IP-Adapter per SDXL
         """
 
         # --- verify / refine loop ---
@@ -142,25 +135,31 @@ class Config:
             os.path.join(os.environ.get("R2P_MODELS_BASE", ""), "FLUX.2-klein-9B")
                 if os.environ.get("R2P_MODELS_BASE") else "black-forest-labs/FLUX.1-schnell"
         )
-
         FLUX_MODEL = _FLUX_PATH
-        
+
         # --- IP-Adapter ---
         IP_ADAPTER_REPO = "h94/IP-Adapter"
         IP_ADAPTER_SUBFOLDER = "sdxl_models"
         IP_ADAPTER_WEIGHT_NAME = "ip-adapter_sdxl.bin"
+
+        CLIP_MODEL = os.path.join(
+            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
+            "clip-vit-large-patch14/snapshots/32bd64288804d66eefd0ccbe215aa642df71cc41"
+        )
+
+        CLIP_MODEL_336 = os.path.join(
+            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
+            "clip-vit-large-patch14-336/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1"
+        )
 
     # ========================================================================
     # GPU CONFIGURATION
     # ========================================================================
     class GPU:
         """GPU memory and performance settings."""
-
         DEVICE = "cuda"
         MEMORY_FRACTION = 0.9
         USE_FP16 = True
-        # Flush VRAM cache ogni N generazioni nel batch Generator loop.
-        # 0 = disabilitato (solo cleanup finale).
         CLEAR_CACHE_EVERY = 10
 
     # ========================================================================
@@ -168,7 +167,6 @@ class Config:
     # ========================================================================
     class Generate:
         """Configuration for pipeline/generate.py"""
-
         IP_ADAPTER_SCALE_GLOBAL = 0.6
         NUM_INFERENCE_STEPS = 40
         GUIDANCE_SCALE = 7.5
@@ -222,7 +220,6 @@ class Config:
     # ========================================================================
     class Refine:
         """Configuration for pipeline/refine.py and flux_loop.py"""
-
         MAX_ITERATIONS = 3
         TARGET_ACCURACY = 0.95
         MIN_IMPROVEMENT = 0.05
@@ -232,7 +229,6 @@ class Config:
     # ========================================================================
     class Images:
         """Image sizing and processing settings."""
-
         MAX_IMAGE_DIM = 896
         FALLBACK_DIM = 448
         REFERENCE_IMAGE_SIZE = 512
@@ -243,21 +239,19 @@ class Config:
     # ========================================================================
     class Paths:
         """Directory paths (auto-adjusted for cluster mode)."""
-
-        OUTPUT_DIR   = os.path.join(Cluster.BASE_DIR, "output")   if Cluster.MODE else "output"
-        DATASET_DIR  = os.path.join(Cluster.DATA_BASE, "perva-data") if Cluster.MODE else "data/perva-data"
-        DATABASE_DIR = os.path.join(Cluster.BASE_DIR, "database") if Cluster.MODE else "database"
+        # Usa variabili di modulo — stesso motivo del fix BuildDatabase
+        OUTPUT_DIR = os.environ.get("R2P_OUTPUT_DIR", os.path.join(_BASE_DIR, "output")) if _CLUSTER_MODE else "output"
+        DATASET_DIR  = os.path.join(_DATA_BASE, "perva-data") if _CLUSTER_MODE else "data/perva-data"
+        DATABASE_DIR = os.path.join(_BASE_DIR, "database") if _CLUSTER_MODE else "database"
 
     # ========================================================================
     # BACKWARD COMPATIBILITY ALIASES
     # ========================================================================
-    # Evita di rompere codice esistente che usa Config.DEVICE, Config.VLM_MODEL, ecc.
-
-    DEVICE         = GPU.DEVICE
-    USE_FP16       = GPU.USE_FP16
-    VLM_MODEL      = Models.VLM_MODEL
+    DEVICE          = GPU.DEVICE
+    USE_FP16        = GPU.USE_FP16
+    VLM_MODEL       = Models.VLM_MODEL
     TARGET_ACCURACY = Refine.TARGET_ACCURACY
-    MAX_IMAGE_DIM  = Images.MAX_IMAGE_DIM
+    MAX_IMAGE_DIM   = Images.MAX_IMAGE_DIM
 
     # ========================================================================
     # HELPER METHODS

@@ -1,5 +1,5 @@
 """
-pipeline/build_database.py
+pipeline/build_dataset.py
 
 Costruisce il database di fingerprints per la pipeline R2P-GEN (FLUX Edition).
 
@@ -8,6 +8,10 @@ Workflow:
   2. Seleziona l'immagine rappresentativa via CLIP centroid
   3. Estrae i fingerprints con Qwen3-VL (JSON strutturato)
   4. Salva database.json con concept_dict + path_to_concept
+
+FIX 8: l'immagine rappresentativa selezionata via CLIP centroid viene ora
+salvata esplicitamente in entry["representative_image"], cosi' generate.py
+e flux_loop.py possono usarla invece di ricadere sempre su images[0].
 
 Il flux_prompt NON viene generato qui: è costruito on-the-fly in flux_loop.py
 tramite build_flux_prompt(fingerprints, target_context), che è deterministica
@@ -168,12 +172,8 @@ class _CLIPSelector:
         from transformers import CLIPModel, CLIPProcessor
         self.device = device
         print("   📎 Loading CLIP for image selection...")
-        self.model = CLIPModel.from_pretrained(
-            "openai/clip-vit-large-patch14"
-        ).to(device).eval()
-        self.processor = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-large-patch14"
-        )
+        self.model = CLIPModel.from_pretrained(Config.Models.CLIP_MODEL).to(device).eval()
+        self.processor = CLIPProcessor.from_pretrained(Config.Models.CLIP_MODEL)
 
     @torch.no_grad()
     def select(self, image_paths: list[str], seed: int = 42) -> str:
@@ -194,11 +194,20 @@ class _CLIPSelector:
         inputs = self.processor(images=images, return_tensors="pt", padding=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        features = self.model.get_image_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
+        output = self.model.get_image_features(**inputs)
+        # get_image_features può restituire un tensore o un oggetto — gestiamo entrambi
+        if hasattr(output, 'image_embeds'):
+            features = output.image_embeds
+        elif hasattr(output, 'pooler_output'):
+            features = output.pooler_output
+        else:
+            features = output  # già un tensore
+
+        import torch.nn.functional as F
+        features = F.normalize(features, p=2, dim=-1)
 
         centroid = features.mean(dim=0, keepdim=True)
-        centroid = centroid / centroid.norm(dim=-1, keepdim=True)
+        centroid = F.normalize(centroid, p=2, dim=-1)
 
         similarities = (features @ centroid.T).squeeze()
         best_idx = similarities.argmax().item()
@@ -221,7 +230,8 @@ class DatabaseBuilder:
     Per ogni concept:
       1. Seleziona immagine rappresentativa (CLIP centroid)
       2. Estrae fingerprints con Qwen3-VL
-      3. Salva in database.json
+      3. Salva in database.json (incluso il path dell'immagine rappresentativa,
+         FIX 8: campo "representative_image")
 
     Il flux_prompt viene costruito on-the-fly in flux_loop.py.
     """
@@ -346,24 +356,16 @@ class DatabaseBuilder:
     # Fingerprint extraction
     # ------------------------------------------------------------------
 
-    def _extract_fingerprints(
-        self,
-        image: Image.Image,
-        category: str,
-        concept_id: str,
-    ) -> dict:
-        """
-        Chiama Qwen3-VL e restituisce il dict dei fingerprints.
-
-        Usa adapter + model_interface.chat() come il resto della pipeline.
-        """
+    def _extract_fingerprints(self, image, category, concept_id):
         msgs = _build_extraction_messages(image, category, concept_id)
-
-        # Qwen3VLReasoning espone adapter per formattare i messaggi
-        formatted = self.reasoner.adapter.format_messages(msgs)
-        output    = self.reasoner.model_interface.chat(formatted)
-        raw_text  = output.get("sequences", "")
-
+        # I messaggi sono già in formato Qwen3-VL nativo —
+        # li passiamo direttamente a model_interface.chat() senza adapter
+        output = self.reasoner.model_interface.chat(msgs)
+        # chat() restituisce (dict, str) da Qwen3VLModel oppure dict da ModelInterface
+        if isinstance(output, tuple):
+            _, raw_text = output
+        else:
+            raw_text = output.get("sequences", "")
         fingerprints = _parse_json_response(raw_text)
         return fingerprints
 
@@ -377,6 +379,10 @@ class DatabaseBuilder:
           1. Seleziona immagine rappresentativa
           2. Estrae fingerprints
           3. Ritorna (concept_key, entry)
+
+        FIX 8: l'immagine rappresentativa selezionata viene salvata in
+        entry["representative_image"], cosi' generate.py e flux_loop.py
+        possono usarla invece di ricadere sempre su images[0].
         """
         category   = concept_data["category"]
         concept_id = concept_data["concept_id"]
@@ -398,6 +404,11 @@ class DatabaseBuilder:
         entry = {
             "name":     concept_id,
             "image":    images,          # tutte le immagini del concept
+            # FIX 8: path dell'immagine scelta via CLIP centroid. Usata da
+            # generate.py (immagine sorgente per Img2Img) e da flux_loop.py
+            # (immagine di riferimento per verify/judge), con fallback a
+            # images[0] se questo campo manca (database vecchi).
+            "representative_image": representative,
             "info":     fingerprints,    # fingerprints JSON (niente sdxl_prompt)
             "category": category,
         }

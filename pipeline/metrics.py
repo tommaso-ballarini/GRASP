@@ -77,12 +77,8 @@ class MetricsCalculator:
         if self._clip_model is None:
             print("   📦 Loading CLIP model...")
             from transformers import CLIPModel, CLIPProcessor
-            self._clip_model = CLIPModel.from_pretrained(
-                "openai/clip-vit-large-patch14"
-            ).to(self.device).eval()
-            self._clip_processor = CLIPProcessor.from_pretrained(
-                "openai/clip-vit-large-patch14"
-            )
+            self._clip_model = CLIPModel.from_pretrained(Config.Models.CLIP_MODEL).to(self.device).eval()
+            self._clip_processor = CLIPProcessor.from_pretrained(Config.Models.CLIP_MODEL)
         return self._clip_model, self._clip_processor
     
     @property
