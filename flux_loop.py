@@ -13,6 +13,7 @@ import os
 import json
 import torch
 import argparse
+import numpy as np
 
 from pipeline.generate import Generator
 from pipeline.verify import verify_generation_r2p
@@ -22,7 +23,7 @@ from pipeline.utils2 import cleanup_gpu, ensure_output_dir
 from r2p_core.models.qwen3_vl_reasoning import Qwen3VLReasoning  # Step 1 output
 from config import Config
 import openai
-from pipeline.recovery import vlm_rewrite_prompt, generate_recovery_http
+from pipeline.recovery import qwen3_rewrite_prompt, generate_recovery_http
 from pipeline.prompts.flux_prompts import build_flux_prompt
 
 
@@ -154,16 +155,15 @@ def stage_verify_base(database_path: str, output_dir: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Stage 3 — Recovery
+# Stage 3 — Recovery 
 # ---------------------------------------------------------------------------
-
 def stage_recovery(
     database_path: str,
     rejected_path: str,
     output_dir: str,
 ) -> None:
-    """Fase 3: Recovery tramite API (closed-loop ospedaliero)."""
-    print(f"\n{'='*70}\n🚑 STAGE: RECOVERY API\n{'='*70}")
+    """Fase 3: Recovery tramite API (closed-loop ospedaliero) su 2 GPU."""
+    print(f"\n{'='*70}\n🚑 STAGE: RECOVERY \n{'='*70}")
 
     if not os.path.exists(rejected_path):
         print("   ✅ Nessun file rejected trovato. Niente da recuperare!")
@@ -182,34 +182,41 @@ def stage_recovery(
 
     print(f"   Trovati {len(rejected_dict)} concetti da curare.")
 
-    # Config API — centralizzati qui, spostare in Config se necessario
-    VLM_URL        = getattr(Config.Models, "RECOVERY_VLM_URL",  "http://localhost:8000/v1")
-    VLM_MODEL_NAME = getattr(Config.Models, "RECOVERY_VLM_NAME", Config.Models.VLM_MODEL)
-    FLUX_URL       = getattr(Config.Models, "RECOVERY_FLUX_URL", "http://localhost:8766")
+    FLUX_URL       = getattr(Config.Models, "RECOVERY_FLUX_URL", "http://127.0.0.1:8766")
     MAX_ATTEMPTS   = Config.Refine.MAX_ITERATIONS
 
-    try:
-        vlm_client = openai.OpenAI(api_key="EMPTY", base_url=VLM_URL)
-    except Exception as e:
-        print(f"   ❌ Errore inizializzazione client VLM: {e}")
-        return
-
-    print("   Caricamento modelli di verifica per il loop di recovery...")
+    print("   Caricamento Qwen3-VL e CLIP in VRAM (GPU 0) per il loop di recovery...")
     reasoner = _build_reasoner()
     clip_calculator = ClipScoreCalculator(device="cuda")
 
     recovered_count = 0
     graveyard_count = 0
+    recovery_report = {}
 
     for concept_id, fail_data in rejected_dict.items():
         print(f"\n   🚑 Paziente: {concept_id} | "
               f"Problema: {fail_data.get('missing_details', ['Unknown'])}")
+
+        report_entry = {
+            "status": "unrecoverable",
+            "attempts": 0,
+            "final_score": fail_data.get("score", 0.0),
+            "last_missing_details": fail_data.get("missing_details", []),
+            "original_fail_reason": fail_data.get("missing_details", []),
+            "recovered_image_path": None,
+            "original_prompt": None,
+            "last_rewritten_prompt": None,
+            "reason": "",
+            "attempts_log": []
+        }
 
         content = concept_dict.get(concept_id, {})
 
         source_image_path = _get_first_image(content)
         if source_image_path is None:
             print(f"      ⚠️  Nessuna immagine sorgente per {concept_id} → graveyard.")
+            report_entry["reason"] = "No source image"
+            recovery_report[concept_id] = report_entry
             graveyard_count += 1
             continue
 
@@ -219,45 +226,80 @@ def stage_recovery(
         missing_details = fail_data.get("missing_details", [])
         gen_image_path  = os.path.join(output_dir, f"{concept_id}_generated.png")
         is_fixed        = False
+        verification    = None
+
+        original_prompt = current_prompt
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
             print(f"      🔄 Tentativo {attempt}/{MAX_ATTEMPTS}...")
 
             # 1. Prescrizione
-            new_prompt = vlm_rewrite_prompt(
-                vlm_client=vlm_client,
-                model_name=VLM_MODEL_NAME,
+            from pipeline.recovery import qwen3_rewrite_prompt
+            new_prompt = qwen3_rewrite_prompt(
+                reasoner=reasoner,
                 original_prompt=current_prompt,
                 missing_details=missing_details,
                 attempt=attempt,
             )
             print(f"         📝 Prompt: {new_prompt[:80]}...")
 
-            # 2. Terapia
+            # 2. Terapia — salva ogni tentativo con nome distinto
+            attempt_image_path = os.path.join(
+                output_dir, f"{concept_id}_generated_attempt{attempt}.png"
+            )
             new_seed = Config.Generate.SEED + attempt
             success = generate_recovery_http(
                 flux_url=FLUX_URL,
                 source_image_path=source_image_path,
                 prompt=new_prompt,
                 seed=new_seed,
-                output_path=gen_image_path,
+                output_path=attempt_image_path,
             )
 
             if not success:
-                print("         ⚠️ Rigenerazione API fallita, prossimo tentativo.")
+                print("         ⚠️ Rigenerazione FLUX fallita, prossimo tentativo.")
+                report_entry["attempts_log"].append({
+                    "attempt": attempt,
+                    "prompt_used": new_prompt,
+                    "clip_score": None,
+                    "vlm_avg": None,
+                    "missing_attributes": missing_details,
+                    "success": False,
+                    "image_path": None
+                })
                 continue
 
-            # 3. Visita di controllo
+            # 3. Visita di controllo (usa l'immagine appena generata)
             verification = verify_generation_r2p(
                 reasoner=reasoner,
                 clip_calculator=clip_calculator,
-                gen_image_path=gen_image_path,
+                gen_image_path=attempt_image_path,
                 ref_image_path=source_image_path,
                 fingerprints=fingerprints,
             )
 
+            # Estrai punteggi aggregati per il log
+            clip_scores_list = list(verification["clip_details"]["gen"].values()) if "clip_details" in verification else []
+            clip_score = float(np.mean(clip_scores_list)) if clip_scores_list else None
+
+            vlm_scores = [item["score"] for item in verification.get("vlm_history", []) if item.get("phase") == "single_check"]
+            vlm_avg = float(np.mean(vlm_scores)) if vlm_scores else None
+
+            report_entry["attempts_log"].append({
+                "attempt": attempt,
+                "prompt_used": new_prompt,
+                "clip_score": clip_score,
+                "vlm_avg": vlm_avg,
+                "missing_attributes": verification.get("failed_attributes", missing_details),
+                "success": verification["is_verified"],
+                "image_path": attempt_image_path
+            })
+
             if verification["is_verified"]:
                 print(f"         ✅ GUARITO al tentativo {attempt}.")
+                # Copia l'immagine vincente come generata ufficiale
+                import shutil
+                shutil.copy2(attempt_image_path, gen_image_path)
                 is_fixed = True
                 recovered_count += 1
                 break
@@ -266,16 +308,38 @@ def stage_recovery(
                 current_prompt  = new_prompt
                 print(f"         ❌ Permangono problemi: {missing_details}")
 
-        if not is_fixed:
-            print(f"      💀 UNRECOVERABLE: {concept_id} → graveyard.")
+        # Compilazione finale del report per questo concept
+        if is_fixed:
+            report_entry["status"] = "recovered"
+            report_entry["attempts"] = attempt
+            report_entry["final_score"] = verification["score"] if verification else fail_data.get("score", 0.0)
+            report_entry["last_missing_details"] = []
+            report_entry["recovered_image_path"] = gen_image_path
+        else:
+            if verification is not None:
+                report_entry["final_score"] = verification.get("score", fail_data.get("score", 0.0))
+            else:
+                report_entry["final_score"] = fail_data.get("score", 0.0)
+            report_entry["attempts"] = MAX_ATTEMPTS
+            report_entry["last_missing_details"] = missing_details
+            report_entry["reason"] = "Max attempts reached" if any(a["success"] is not None for a in report_entry["attempts_log"]) else "FLUX generation failed"
             graveyard_count += 1
+
+        report_entry["original_prompt"] = original_prompt
+        report_entry["last_rewritten_prompt"] = new_prompt if 'new_prompt' in locals() else None
+        recovery_report[concept_id] = report_entry
+
+    # Salva il report
+    report_path = os.path.join(output_dir, "recovery_results.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(recovery_report, f, indent=4)
+    print(f"\n📋 Report recupero salvato → {report_path}")
 
     print(f"\n📊 Recovery: {recovered_count} salvati | {graveyard_count} graveyard")
 
     del reasoner
     del clip_calculator
     cleanup_gpu()
-
 
 # ---------------------------------------------------------------------------
 # Stage 4 — Final Judge

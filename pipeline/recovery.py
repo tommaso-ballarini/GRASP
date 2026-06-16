@@ -10,16 +10,15 @@ import base64
 import requests
 from PIL import Image
 
-def vlm_rewrite_prompt(vlm_client, model_name: str, original_prompt: str, missing_details: list, attempt: int) -> str:
-    """
-    Riscrive il prompt originale per recuperare i dettagli persi.
-    """
+
+def qwen3_rewrite_prompt(reasoner, original_prompt: str, missing_details: list, attempt: int) -> str:
+    """Riscrive il prompt usando l'oggetto Qwen3VLReasoning (testo-solo) nativo in PyTorch."""
+    
     sys_msg = (
         "You are an expert AI prompt engineer for image diffusion models. "
         "Your task is to rewrite the prompt to recover missing physical details of an object. "
         "Output ONLY valid JSON in this format: {\"rewritten_prompt\": \"...\"}"
     )
-    
     missing_str = ", ".join(missing_details)
     
     if attempt <= 2:
@@ -41,26 +40,24 @@ def vlm_rewrite_prompt(vlm_client, model_name: str, original_prompt: str, missin
             f"Original prompt: {original_prompt}"
         )
 
+    # Creiamo i messaggi nel formato standard chat
+    messages = [
+        {"role": "system", "content": sys_msg},
+        {"role": "user", "content": user_msg}
+    ]
+    
     try:
-        response = vlm_client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": user_msg}
-            ],
-            temperature=0.3,
-            max_tokens=150,
-        )
-        gen_text = response.choices[0].message.content
+        # ✨ CHIAMATA NATIVA AL TUO OGGETTO REASONER ✨
+        outputs, gen_text = reasoner.model_interface.chat(messages)
         
         clean_text = gen_text.strip().removeprefix('```json').removesuffix('```').strip()
         parsed = json.loads(clean_text)
-        
         return parsed.get('rewritten_prompt', original_prompt)
         
     except Exception as e:
-        print(f"  [WARN] VLM Rewrite failed, falling back to original prompt. Error: {e}")
+        print(f"  [WARN] Fallito parsing JSON o inferenza: {e}\nRaw output: {gen_text if 'gen_text' in locals() else 'N/A'}")
         return original_prompt
+
 
 def generate_recovery_http(flux_url: str, source_image_path: str, prompt: str, seed: int, output_path: str) -> bool:
     """

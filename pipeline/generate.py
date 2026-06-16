@@ -69,59 +69,52 @@ class Generator:
         concept_dict = database.get("concept_dict", {})
         
         # LOGICA DI SHARDING
-        # 1. Estraiamo le chiavi e le ordiniamo (fondamentale per la coerenza tra processi!)
         all_keys = sorted(list(concept_dict.keys()))
-        
-        # 2. Calcoliamo la porzione spettante a questa GPU
         chunk_size = len(all_keys) // num_shards
         start_idx = shard_index * chunk_size
-        # Se è l'ultimo shard, prende tutto il resto (per gestire i resti della divisione)
         end_idx = start_idx + chunk_size if shard_index < num_shards - 1 else len(all_keys)
-        
-        # 3. Selezioniamo solo i concetti assegnati a noi
         my_keys = all_keys[start_idx:end_idx]
         
         print(f"🖥️  Worker {shard_index}/{num_shards} - Assegnati {len(my_keys)} concetti su {len(all_keys)} totali.")
         stats = {"total": len(my_keys), "success": 0, "failed": 0}
         
-        prompts_log = {}  # concept_id -> prompt FLUX
-
-        # Target context dal Config
+        prompts_log = {}
         target_context = Config.get_background_template()
-                
-
+        
         t_start = time.time()
         for i, concept_id in enumerate(tqdm(my_keys, desc="Generating", unit="img")):
             content = concept_dict[concept_id]
             t_concept = time.time()
             print(f"\n🎨 [{i+1}/{len(my_keys)}] Elaborazione concetto: {concept_id}")
             try:
-                # 1. Recupero dell'immagine sorgente
-                # Gestiamo sia il formato vecchio che nuovo
-                images = content.get("image", content.get("selected_images", []))
-                if not images:
-                    print(f"   ⚠️ Nessuna immagine sorgente trovata per {concept_id}.")
-                    continue
-                source_image_path = images[0]
+                # 1. Recupero dell'immagine sorgente (RAPPRESENTATIVA)
+                source_image_path = content.get("representative_image")
+                if not source_image_path:
+                    # Fallback: usa la prima immagine della lista "image"
+                    images = content.get("image", [])
+                    if images:
+                        source_image_path = images[0]
+                    else:
+                        print(f"   ⚠️ Nessuna immagine sorgente trovata per {concept_id}.")
+                        continue
+                # Rendi il percorso assoluto (per sicurezza)
+                source_image_path = os.path.abspath(source_image_path)
                 
                 # 2. Recupero degli attributi (Fingerprints)
                 attributes = content.get("info", {})
                 
-                # 3. Textual Anchoring: Costruzione del prompt FLUX
+                # 3. Costruzione del prompt FLUX
                 flux_prompt = build_flux_prompt(attributes, target_context)
                 print(f"   📝 Prompt: {flux_prompt[:100]}...")
                 
                 # 4. Caricamento e standardizzazione immagine
                 seed_img = Image.open(source_image_path).convert("RGB")
-                # Fissiamo la dimensione per evitare che immagini troppo grosse causino OOM
                 target_size = Config.Images.REFERENCE_IMAGE_SIZE
                 seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
                 
-                # Seme di generazione per la riproducibilità
                 generator = torch.Generator(device=self.device).manual_seed(Config.Generate.SEED)
                 
-                # 5. La magia di FLUX Img2Img (Senza IP-Adapter, 4 step fissi)
-                # Omettiamo 'strength' per far applicare a Diffusers il noise default (~0.8)
+                # 5. Generazione con FLUX Img2Img
                 output_img = self.pipe(
                     prompt=flux_prompt,
                     image=seed_img,
@@ -129,9 +122,9 @@ class Generator:
                     generator=generator
                 ).images[0]
                 
-                # 6. Salvataggio Output (Rispettiamo la nomenclatura di R2P-GEN originale)
-                # In full_loop.py il file verificato si aspetta di chiamarsi: "{concept_id}_generated.png"
+                # 6. Salvataggio Output (percorso assoluto)
                 out_path = os.path.join(self.output_dir, f"{concept_id}_generated.png")
+                out_path = os.path.abspath(out_path)
                 output_img.save(out_path)
                 
                 prompts_log[concept_id] = {
@@ -139,7 +132,7 @@ class Generator:
                     "source_image": source_image_path,
                     "output_image": out_path,
                 }
-
+                
                 elapsed = time.time() - t_concept
                 total_elapsed = time.time() - t_start
                 avg = total_elapsed / (i + 1)
@@ -150,12 +143,13 @@ class Generator:
             except Exception as e:
                 print(f"   ❌ Errore {concept_id}: {str(e)}")
                 stats["failed"] += 1
-
+        
+        # Salva il log
         prompts_path = os.path.join(self.output_dir, "prompts.json")
         with open(prompts_path, "w", encoding="utf-8") as f:
             json.dump(prompts_log, f, indent=4, ensure_ascii=False)
         print(f"   📝 Prompt log salvato → {prompts_path}")
-
+        
         total = time.time() - t_start
         print(f"\n⏱️  Tempo totale: {total/60:.1f}min | "
             f"avg {total/max(stats['success'],1):.1f}s/img")
