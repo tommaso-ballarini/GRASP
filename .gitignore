@@ -20,7 +20,7 @@ logs/
 # Evita di caricare GB di modelli su git
 output/
 checkpoints/
-models/
+
 *.pth
 *.safetensors
 *.bin
