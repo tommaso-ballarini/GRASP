@@ -3,7 +3,7 @@
 Final Judge per R2P-GEN Pipeline.
 
 IMPORTANTE: Il Final Judge usa un modello DIVERSO da verify.py!
-- verify.py / refine.py loop → MiniCPM / Qwen3-VL (verifica durante generazione)
+- verify.py / refine.py loop → Qwen3-VL (verifica durante generazione)
 - judge.py → InternVL3_5-8B (valutazione finale indipendente)
 
 Questo garantisce una valutazione imparziale: il modello che ha guidato
@@ -29,7 +29,6 @@ Usage:
 
 import os
 import sys
-import json 
 import torch
 from PIL import Image
 from typing import Dict, List, Optional, Union
@@ -348,7 +347,7 @@ class FinalJudge:
             generated_image: Path or PIL Image of generated output
             reference_image: Path or PIL Image of reference/target
             fingerprints: Dict of attributes to verify
-            prompt: Prompt used (for CLIP-T, optional)
+            prompt: SDXL prompt used (for CLIP-T, optional)
 
         Returns:
             JudgeResult with all metrics and pass/fail decision
@@ -412,46 +411,6 @@ class FinalJudge:
         print(f"   🏆 FINAL SCORE: {result.final_score:.1%}")
         print(f"   {'✅ PASSED' if result.passed else '❌ FAILED'} (threshold: {self.threshold:.0%})")
         print(f"{'─'*50}")
-
-        # ========================================================================
-        # AGGIUNTA: SALVATAGGIO IN ROOT/metrics/metrics.json
-        # ========================================================================
-        try:
-            metrics_dir = os.path.join(PROJECT_ROOT, "metrics")
-            os.makedirs(metrics_dir, exist_ok=True)
-            metrics_path = os.path.join(metrics_dir, "metrics.json")
-
-            # Estrazione path come stringa se possibile, altrimenti stringa generica per le chiavi del JSON
-            img_key = generated_image if isinstance(generated_image, str) else "PIL_Image"
-            ref_key = reference_image if isinstance(reference_image, str) else "PIL_Image"
-
-            new_entry = {
-                "generated_image": img_key,
-                "reference_image": ref_key,
-                "prompt": prompt,
-                "evaluation": result.to_dict()
-            }
-
-            # Carica il JSON esistente (se presente) per fare un append list-based
-            if os.path.exists(metrics_path):
-                with open(metrics_path, "r", encoding="utf-8") as f:
-                    try:
-                        data = json.load(f)
-                        if not isinstance(data, list):
-                            data = [data]  # fallback di sicurezza se il JSON fosse formattato diversamente
-                    except json.JSONDecodeError:
-                        data = []
-            else:
-                data = []
-
-            data.append(new_entry)
-
-            with open(metrics_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-
-            print(f"   💾 Metrics saved successfully to: metrics/metrics.json")
-        except Exception as e:
-            print(f"   ⚠️ Warning: failed to save metrics to JSON: {e}")
 
         return result
 

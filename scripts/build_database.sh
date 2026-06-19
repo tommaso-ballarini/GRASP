@@ -58,7 +58,7 @@ echo "---------------------"
 # 4. Build database (DEBUG_MODE=True, DEBUG_LIMIT=5 da config.py)
 # ===========================================================================
 echo "Avvio build database..."
-python -u pipeline/build_dataset.py \
+python -u pipeline/build_database.py \
     --split train \
     --debug \
     --debug-limit 2

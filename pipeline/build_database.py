@@ -1,16 +1,17 @@
 """
-pipeline/build_dataset_diego.py
+pipeline/build_database.py
 
-Costruisce il database di fingerprints per la pipeline R2P-GEN (FLUX Edition).
-VARIANTE DIEGO: Text-Driven Semantic View Selection. 
-Usa il Text Encoder di CLIP per forzare la selezione dell'immagine che mostra 
-chiaramente dettagli strutturali, testi e loghi, evitando il representation smoothing.
+Builds the fingerprints database for the R2P-GEN pipeline (FLUX Edition).
+Uses CLIP's Text Encoder to force selection of the image that clearly
+shows structural details, readable text and logos, avoiding representation
+smoothing of centroids.
 
 Workflow:
-  1. Scopre tutti i concetti in perva-data (train/categoria/concept_id/)
-  2. Seleziona le TOP-3 immagini rappresentative via Text-Image Cosine Similarity
-  3. Estrae i fingerprints con Qwen3-VL (JSON strutturato) dalla TOP-1
-  4. Salva database.json con concept_dict + path_to_concept (includendo i backup per recovery)
+    1. Discover all concepts in perva-data (train/category/concept_id/)
+    2. Select the TOP-3 representative images via Text-Image Cosine Similarity
+    3. Extract fingerprints with Qwen3-VL (structured JSON) from the TOP-1
+    4. Save database.json containing concept_dict + path_to_concept (including
+         backups for recovery)
 
 """
 
@@ -34,14 +35,14 @@ if project_root not in sys.path:
 from config import Config
 
 # ---------------------------------------------------------------------------
-# Costanti / env
+# Constants / env
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PERVA = "/leonardo_work/IscrC_MUSE/tballari/perva-data"
 PERVA_DATA_DIR = os.environ.get("R2P_PERVA_DATA", _DEFAULT_PERVA)
 
 # ---------------------------------------------------------------------------
-# Prompt per Qwen3-VL
+# Prompts for Qwen3-VL
 # ---------------------------------------------------------------------------
 
 _ONESHOT_IMAGE_PATH = os.path.join(project_root, "example_database", "wnr.jpg")
@@ -126,14 +127,14 @@ def _parse_json_response(raw: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# NUOVO SELETTORE: Semantic CLIP Selector (Text-Driven)
+# NEW SELECTOR: Semantic CLIP Selector (Text-Driven)
 # ---------------------------------------------------------------------------
 
 class _SemanticCLIPSelector:
     """
-    Seleziona le immagini più rappresentative calcolando la similarità
-    tra le features visive e un prompt testuale ideale (Text Prior).
-    Risolve il problema del "Representation Smoothing" dei centroidi.
+    Selects the most representative images by computing similarity
+    between visual features and an ideal textual prompt (Text Prior).
+    This addresses the "Representation Smoothing" problem of centroids.
     """
 
     def __init__(self, device: str = "cuda"):
@@ -146,21 +147,21 @@ class _SemanticCLIPSelector:
     @torch.no_grad()
     def select(self, image_paths: list[str], category: str, k: int = 3) -> list[str]:
         """
-        Restituisce i path delle top-K immagini più simili al prompt ideale.
+        Returns the paths of the top-K images most similar to the ideal prompt.
         """
         if len(image_paths) == 1:
             return [image_paths[0]]
 
-        # 1. Definizione del Text Prior (Calamita Semantica)
+        # 1. Definition of the Text Prior (Semantic Magnet)
         text_prompt = (
             f"A clear frontal photo of a {category}, perfectly showing "
             "brand logos, readable text, and distinct structural features."
         )
 
-        # 2. Caricamento immagini
+        # 2. Load images
         images = [Image.open(p).convert("RGB") for p in image_paths]
         
-        # 3. Processamento input Misto (Testo + Immagini)
+        # 3. Process mixed input (Text + Images)
         inputs = self.processor(
             text=[text_prompt], 
             images=images, 
@@ -170,27 +171,27 @@ class _SemanticCLIPSelector:
         )
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        # 4. Estrazione Embeddings (Modello congiunto)
+        # 4. Extract embeddings (joint model)
         outputs = self.model(**inputs)
         image_embeds = outputs.image_embeds
         text_embeds = outputs.text_embeds
 
-        # Normalizzazione
+        # Normalization
         import torch.nn.functional as F
         image_embeds = F.normalize(image_embeds, p=2, dim=-1)
         text_embeds = F.normalize(text_embeds, p=2, dim=-1)
 
-        # 5. Calcolo Cosine Similarity (Dot Product)
+        # 5. Compute Cosine Similarity (Dot Product)
         similarities = (image_embeds @ text_embeds.T).squeeze()
         
         if similarities.dim() == 0:
             return [image_paths[0]]
 
-        # 6. Selezione delle Top-K (Evita errori se le immagini totali sono meno di K)
+        # 6. Select Top-K (Avoid errors if total images are less than K)
         actual_k = min(k, len(image_paths))
         top_scores, top_indices = torch.topk(similarities, k=actual_k)
 
-        # Ritorna lista ordinata di paths (il più alto prima)
+        # Return ordered list of paths (highest first)
         return [image_paths[idx.item()] for idx in top_indices]
 
     def cleanup(self):
