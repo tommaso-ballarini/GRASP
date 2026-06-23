@@ -176,32 +176,25 @@ class _CLIPSelector:
         self.processor = CLIPProcessor.from_pretrained(Config.Models.CLIP_MODEL)
 
     @torch.no_grad()
-    def select(self, image_paths: list[str], seed: int = 42) -> str:
+    def select(self, image_paths: list[str], seed: int = 42, top_k: int = 3) -> tuple[str, list[str]]:
         """
-        Restituisce il path dell'immagine più vicina al centroide CLIP.
-
-        Args:
-            image_paths: lista di path immagini del concept
-            seed:        seed per shuffle deterministico tra le top-N (compatibilità R2P)
-
-        Returns:
-            Path dell'immagine selezionata
+        Restituisce il path dell'immagine più vicina al centroide CLIP e la lista delle top-K.
         """
         if len(image_paths) == 1:
-            return image_paths[0]
+            return image_paths[0], [image_paths[0]]
 
         images = [Image.open(p).convert("RGB") for p in image_paths]
         inputs = self.processor(images=images, return_tensors="pt", padding=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
         output = self.model.get_image_features(**inputs)
-        # get_image_features può restituire un tensore o un oggetto — gestiamo entrambi
+        
         if hasattr(output, 'image_embeds'):
             features = output.image_embeds
         elif hasattr(output, 'pooler_output'):
             features = output.pooler_output
         else:
-            features = output  # già un tensore
+            features = output
 
         import torch.nn.functional as F
         features = F.normalize(features, p=2, dim=-1)
@@ -210,10 +203,16 @@ class _CLIPSelector:
         centroid = F.normalize(centroid, p=2, dim=-1)
 
         similarities = (features @ centroid.T).squeeze()
-        best_idx = similarities.argmax().item()
+        
+        # FIX ABLAZIONI: Prendi i top K indici ordinati
+        k = min(top_k, len(image_paths))
+        top_indices = similarities.argsort(descending=True)[:k].tolist()
+        
+        best_path = image_paths[top_indices[0]]
+        top_k_paths = [image_paths[i] for i in top_indices]
 
-        return image_paths[best_idx]
-
+        return best_path, top_k_paths
+    
     def cleanup(self):
         del self.model
         torch.cuda.empty_cache()
@@ -374,47 +373,31 @@ class DatabaseBuilder:
     # ------------------------------------------------------------------
 
     def _process_concept(self, concept_data: dict) -> tuple[str, dict]:
-        """
-        Processa un singolo concept:
-          1. Seleziona immagine rappresentativa
-          2. Estrae fingerprints
-          3. Ritorna (concept_key, entry)
-
-        FIX 8: l'immagine rappresentativa selezionata viene salvata in
-        entry["representative_image"], cosi' generate.py e flux_loop.py
-        possono usarla invece di ricadere sempre su images[0].
-        """
         category   = concept_data["category"]
         concept_id = concept_data["concept_id"]
         images     = concept_data["images"]
 
-        # Selezione immagine rappresentativa
+        # Selezione immagine rappresentativa E top_k
         if self.use_clip_sel and self.clip_selector is not None:
-            representative = self.clip_selector.select(images, seed=self.seed)
+            representative, top_k_paths = self.clip_selector.select(images, seed=self.seed)
         else:
             representative = images[0]
+            top_k_paths = images[:3] # Fallback sicuro
 
-        # Carica immagine
         image = Image.open(representative).convert("RGB")
-
-        # Estrai fingerprints
         fingerprints = self._extract_fingerprints(image, category, concept_id)
 
         concept_key = f"<{concept_id}>"
         entry = {
             "name":     concept_id,
-            "image":    images,          # tutte le immagini del concept
-            # FIX 8: path dell'immagine scelta via CLIP centroid. Usata da
-            # generate.py (immagine sorgente per Img2Img) e da flux_loop.py
-            # (immagine di riferimento per verify/judge), con fallback a
-            # images[0] se questo campo manca (database vecchi).
+            "image":    images,          
             "representative_image": representative,
-            "info":     fingerprints,    # fingerprints JSON (niente sdxl_prompt)
+            "top_k_images": top_k_paths, # NUOVO CAMPO AGGIUNTO
+            "info":     fingerprints,    
             "category": category,
         }
 
         return concept_key, entry
-
     # ------------------------------------------------------------------
     # Build
     # ------------------------------------------------------------------

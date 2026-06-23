@@ -1,60 +1,59 @@
-"""
-FLUX-based Image Generator per R2P-GEN.
-Sostituisce la vecchia pipeline SDXL + IP-Adapter.
-Utilizza Textual Anchoring e SDEdit (rumore nativo img2img) per preservare l'identità.
-"""
-
 import os
 import json
 import torch
 import gc
-from PIL import Image
-from diffusers import DiffusionPipeline
-import diffusers.models.attention_processor
-import torch.nn.functional as F
 import time
+from PIL import Image
 from tqdm import tqdm
 
+# Importiamo le AutoPipelines per gestire in sicurezza T2I e I2I
+from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
+
 from config import Config
-# Importiamo il nuovo costruttore di prompt
 from pipeline.prompts.flux_prompts import build_flux_prompt
 
 class Generator:
     def __init__(self, database_path: str, output_dir: str, device: str = "cuda:0",
-             num_shards: int = 1, shard_index: int = 0):
+                 num_shards: int = 1, shard_index: int = 0,
+                 use_naive_prompt: bool = False, no_image_cond: bool = False):
         """
-        Inizializza il generatore mantenendo la compatibilità con full_loop.py.
+        Inizializza il generatore.
+        Aggiunti parametri per ablazioni: use_naive_prompt e no_image_cond.
         """
         self.num_shards = num_shards
         self.shard_index = shard_index
         self.database_path = database_path
         self.output_dir = output_dir
         self.device = device
-        self.pipe = None
         
+        # Flag per le ablazioni
+        self.use_naive_prompt = use_naive_prompt
+        self.no_image_cond = no_image_cond
+        
+        self.pipe = None
         self._load_pipeline()
         
     def _load_pipeline(self):
-        """Carica FLUX ottimizzando al massimo l'uso della memoria."""
-        print(f"\n🚀 Inizializzazione FLUX Img2Img in corso...")
-        
-
-        # ATTENZIONE: Assicurati di aggiungere FLUX_MODEL nel tuo config.py
-        # Es: Config.Models.FLUX_MODEL = "black-forest-labs/FLUX.1-schnell" o il path locale
+        """Carica FLUX (T2I o I2I a seconda delle ablazioni)."""
+        print(f"\n🚀 Inizializzazione FLUX in corso...")
         model_name_or_path = getattr(Config.Models, "FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
         
-        self.pipe = DiffusionPipeline.from_pretrained(
+        # Scegliamo la pipeline corretta in base all'ablazione
+        if self.no_image_cond:
+            print("   ℹ️ Modalità Text-Only (no image conditioning) attivata.")
+            pipe_class = AutoPipelineForText2Image
+        else:
+            print("   ℹ️ Modalità Image-to-Image attivata.")
+            pipe_class = AutoPipelineForImage2Image
+
+        self.pipe = pipe_class.from_pretrained(
             model_name_or_path,
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
-            # Aggiungi questa riga per un boost massiccio:
             attn_implementation="flash_attention_2" 
         )
-        
-        
-        #self.pipe.enable_model_cpu_offload()
         self.pipe.to(self.device)   
-        print("✅ FLUX caricato con successo (CPU Offload attivato).")
+        print("✅ FLUX caricato con successo.")
 
     def generate_all(self):
         num_shards = self.num_shards
@@ -96,28 +95,62 @@ class Generator:
                 # Rendi il percorso assoluto (per sicurezza)
                 source_image_path = os.path.abspath(source_image_path)
                 
-                # 2. Recupero degli attributi (Fingerprints)
-                attributes = content.get("info", {})
+                # 3. Costruzione del prompt FLUX (Ablazione Naive vs Fingerprints)
+                if self.use_naive_prompt:
+                    category = content.get("category", "object")
+                    flux_prompt = f"A high-quality photograph of a {category}. The {category} is {target_context}."
+                    print(f"   📝 NAIVE Prompt: {flux_prompt[:100]}...")
+                else:
+                    flux_prompt = build_flux_prompt(attributes, target_context)
+                    print(f"   📝 FULL Prompt: {flux_prompt[:100]}...")
                 
-                # 3. Costruzione del prompt FLUX
-                flux_prompt = build_flux_prompt(attributes, target_context)
-                print(f"   📝 Prompt: {flux_prompt[:100]}...")
-                
-                # 4. Caricamento e standardizzazione immagine
-                seed_img = Image.open(source_image_path).convert("RGB")
-                target_size = Config.Images.REFERENCE_IMAGE_SIZE
-                seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
-                
+                # Setup generatore per riproducibilità
                 generator = torch.Generator(device=self.device).manual_seed(Config.Generate.SEED)
                 
-                # 5. Generazione con FLUX Img2Img
+                # 4 & 5. Generazione con FLUX (Ablazione Text-Only vs Img2Img)
                 with torch.inference_mode():
-                    output_img = self.pipe(
-                        prompt=flux_prompt,
-                        image=seed_img,
-                        num_inference_steps=4,
-                        generator=generator
-                    ).images[0]
+                    if self.no_image_cond:
+                        # Condizioni A, B: Niente immagine in input
+                        output_img = self.pipe(
+                            prompt=flux_prompt,
+                            num_inference_steps=4,
+                            generator=generator
+                        ).images[0]
+                    else:
+                        # Condizioni C, D, E, F: Usa immagine
+                        seed_img = Image.open(source_image_path).convert("RGB")
+                        target_size = Config.Images.REFERENCE_IMAGE_SIZE
+                        seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+                        
+                        output_img = self.pipe(
+                            prompt=flux_prompt,
+                            image=seed_img,
+                            num_inference_steps=4,
+                            generator=generator
+                        ).images[0]
+
+                # # 2. Recupero degli attributi (Fingerprints)
+                # attributes = content.get("info", {})
+                
+                # # 3. Costruzione del prompt FLUX
+                # flux_prompt = build_flux_prompt(attributes, target_context)
+                # print(f"   📝 Prompt: {flux_prompt[:100]}...")
+                
+                # # 4. Caricamento e standardizzazione immagine
+                # seed_img = Image.open(source_image_path).convert("RGB")
+                # target_size = Config.Images.REFERENCE_IMAGE_SIZE
+                # seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+                
+                # generator = torch.Generator(device=self.device).manual_seed(Config.Generate.SEED)
+                
+                # # 5. Generazione con FLUX Img2Img
+                # with torch.inference_mode():
+                #     output_img = self.pipe(
+                #         prompt=flux_prompt,
+                #         image=seed_img,
+                #         num_inference_steps=4,
+                #         generator=generator
+                #     ).images[0]
                 
                 # 6. Salvataggio Output (percorso assoluto)
                 out_path = os.path.join(self.output_dir, f"{concept_id}_generated.png")

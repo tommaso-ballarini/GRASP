@@ -154,11 +154,31 @@ def _build_failed_generation_log_entry(
 # Stage 1 — Generate Only
 # ---------------------------------------------------------------------------
 
+# def stage_generate_only(
+#     database_path: str,
+#     output_dir: str,
+#     num_shards: int = 1,
+#     shard_index: int = 0,
+# ) -> dict:
+#     print(f"\n{'='*70}\n🚀 STAGE: GENERATE ONLY "
+#           f"[shard {shard_index}/{num_shards}]\n{'='*70}")
+#     ensure_output_dir(output_dir)
+
+#     generator = Generator(
+#         database_path=database_path,
+#         output_dir=output_dir,
+#         num_shards=num_shards,
+#         shard_index=shard_index,
+#     )
+#     stats = generator.generate_all()
+# Aggiorna la definizione della funzione
 def stage_generate_only(
     database_path: str,
     output_dir: str,
     num_shards: int = 1,
     shard_index: int = 0,
+    use_naive_prompt: bool = False,
+    no_image_cond: bool = False,
 ) -> dict:
     print(f"\n{'='*70}\n🚀 STAGE: GENERATE ONLY "
           f"[shard {shard_index}/{num_shards}]\n{'='*70}")
@@ -169,6 +189,8 @@ def stage_generate_only(
         output_dir=output_dir,
         num_shards=num_shards,
         shard_index=shard_index,
+        use_naive_prompt=use_naive_prompt,
+        no_image_cond=no_image_cond,
     )
     stats = generator.generate_all()
     generator.cleanup()
@@ -620,13 +642,22 @@ if __name__ == "__main__":
                         required=True)
     parser.add_argument("--num-shards",  type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--num-shards",  type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
+    
+    # ablation's flags
+    parser.add_argument("--naive-prompt", action="store_true", help="Usa un prompt base senza fingerprints")
+    parser.add_argument("--no-image-cond", action="store_true", help="Disabilita l'img2img, usa solo testuale")
+    
     args = parser.parse_args()
 
     rejected_path = os.path.join(args.output, "rejected_concepts.json")
 
     if args.stage == "generate_only":
         stage_generate_only(args.database, args.output,
-                            args.num_shards, args.shard_index)
+                            args.num_shards, args.shard_index,
+                            use_naive_prompt=args.naive_prompt,
+                            no_image_cond=args.no_image_cond)
 
     elif args.stage == "verify_base":
         stage_verify_base(args.database, args.output)
