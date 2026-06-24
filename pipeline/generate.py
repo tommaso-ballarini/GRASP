@@ -95,26 +95,49 @@ class Generator:
                 # Rendi il percorso assoluto (per sicurezza)
                 source_image_path = os.path.abspath(source_image_path)
                 
+
                 # 3. Costruzione del prompt FLUX (Ablazione Naive vs Fingerprints)
                 if self.use_naive_prompt:
                     category = content.get("category", "object")
                     flux_prompt = f"A high-quality photograph of a {category}. The {category} is {target_context}."
                     print(f"   📝 NAIVE Prompt: {flux_prompt[:100]}...")
-                    # Fix per immagini identiche: rendiamo il seed dinamico basandoci sull'hash del concept_id
-                    current_seed = Config.Generate.SEED + abs(hash(concept_id)) % 10000
                 else:
-                    # FIX NameError: estraiamo 'info' dal JSON prima di passarlo al prompt builder
+                    # Estraiamo 'info' dal JSON prima di passarlo al prompt builder
                     attributes = content.get("info", {})
                     flux_prompt = build_flux_prompt(attributes, target_context)
                     print(f"   📝 FULL Prompt: {flux_prompt[:100]}...")
-                    # Usa il seed standard riproducibile
+                
+                # ---------------------------------------------------------
+                # FIX SEED: Dinamico per Text-to-Image (A, B), Statico per Img2Img (C-F)
+                # ---------------------------------------------------------
+                if self.no_image_cond:
+                    # Ablazioni A e B (Text-Only): Usiamo un seed dinamico basato sul nome del concetto
+                    current_seed = Config.Generate.SEED + (abs(hash(concept_id)) % 10000)
+                else:
+                    # Ablazioni C, D, E, F (Img2Img): Usiamo il seed statico globale
                     current_seed = Config.Generate.SEED
                 
-                # Setup generatore con il seed corretto
+                # Setup UNICO del generatore per la riproducibilità
                 generator = torch.Generator(device=self.device).manual_seed(current_seed)
+
+                # # 3. Costruzione del prompt FLUX (Ablazione Naive vs Fingerprints)
+                # if self.use_naive_prompt:
+                #     category = content.get("category", "object")
+                #     flux_prompt = f"A high-quality photograph of a {category}. The {category} is {target_context}."
+                #     print(f"   📝 NAIVE Prompt: {flux_prompt[:100]}...")
+                #     # Fix per immagini identiche: rendiamo il seed dinamico basandoci sull'hash del concept_id
+                #     current_seed = Config.Generate.SEED + abs(hash(concept_id)) % 10000
+                # else:
+                #     # FIX NameError: estraiamo 'info' dal JSON prima di passarlo al prompt builder
+                #     attributes = content.get("info", {})
+                #     flux_prompt = build_flux_prompt(attributes, target_context)
+                #     print(f"   📝 FULL Prompt: {flux_prompt[:100]}...")
+                #     # Usa il seed standard riproducibile
+                #     current_seed = Config.Generate.SEED
                 
-                # Setup generatore per riproducibilità
-                generator = torch.Generator(device=self.device).manual_seed(Config.Generate.SEED)
+                # # Setup generatore con il seed corretto
+                # generator = torch.Generator(device=self.device).manual_seed(current_seed)
+                
                 
                 # 4 & 5. Generazione con FLUX (Ablazione Text-Only vs Img2Img)
                 with torch.inference_mode():
