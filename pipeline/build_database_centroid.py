@@ -9,10 +9,6 @@ Workflow:
     3. Extract fingerprints with Qwen3-VL (structured JSON)
     4. Save database.json with concept_dict + path_to_concept
 
-FIX 8: the representative image selected via the CLIP centroid is now
-saved explicitly in entry["representative_image"], so generate.py
-and flux_loop.py can use it instead of always falling back to images[0].
-
 The flux_prompt is NOT generated here: it is built on the fly in flux_loop.py
 via build_flux_prompt(fingerprints, target_context), which is deterministic
 and depends on the target context (it may vary across runs).
@@ -98,9 +94,6 @@ def _build_extraction_messages(
         image:      PIL Image dell'oggetto da analizzare
         category:   categoria rilevata via CLIP (es. "bag")
         concept_id: identificatore unico del concetto (es. "alx")
-
-    Returns:
-        Lista messaggi nel formato [{"role": ..., "content": [...]}]
     """
     question_test = (
         f"Describe the {category} in the image identified by the concept-identifier "
@@ -228,11 +221,8 @@ class DatabaseBuilder:
 
     Per ogni concept:
     1. Select the representative image (CLIP centroid)
-      2. Estrae fingerprints con Qwen3-VL
+      2. Extracts fingerprints with Qwen3-VL
         3. Save in database.json (including the representative image path,
-            FIX 8: field "representative_image")
-
-    Il flux_prompt viene costruito on-the-fly in flux_loop.py.
     """
 
     VALID_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'}
@@ -308,8 +298,8 @@ class DatabaseBuilder:
         print(f"   🔍 perva-data: {abs_path}")
 
         if not os.path.exists(abs_path):
-            print(f"   ❌ Directory non trovata: {abs_path}")
-            print(f"      Imposta R2P_PERVA_DATA per sovrascrivere il path.")
+            print(f"   ❌ Directory not found: {abs_path}")
+            print(f"      Set R2P_PERVA_DATA to override the path.")
             return []
 
         splits = ["train", "test"] if self.dataset_split == "all" else [self.dataset_split]
@@ -318,7 +308,7 @@ class DatabaseBuilder:
         for split in splits:
             split_dir = os.path.join(abs_path, split)
             if not os.path.exists(split_dir):
-                print(f"   ⚠️  Split '{split}' non trovato, skip.")
+                print(f"   ⚠️  Split '{split}' not found, skip.")
                 continue
 
             for category in sorted(os.listdir(split_dir)):
@@ -357,8 +347,6 @@ class DatabaseBuilder:
 
     def _extract_fingerprints(self, image, category, concept_id):
         msgs = _build_extraction_messages(image, category, concept_id)
-        # I messaggi sono già in formato Qwen3-VL nativo —
-        # li passiamo direttamente a model_interface.chat() senza adapter
         output = self.reasoner.model_interface.chat(msgs)
         # chat() returns (dict, str) from Qwen3VLModel or dict from ModelInterface
         if isinstance(output, tuple):
@@ -382,7 +370,7 @@ class DatabaseBuilder:
             representative, top_k_paths = self.clip_selector.select(images, seed=self.seed)
         else:
             representative = images[0]
-            top_k_paths = images[:3] # Fallback sicuro
+            top_k_paths = images[:3] # Fallback
 
         image = Image.open(representative).convert("RGB")
         fingerprints = self._extract_fingerprints(image, category, concept_id)
@@ -392,7 +380,7 @@ class DatabaseBuilder:
             "name":     concept_id,
             "image":    images,          
             "representative_image": representative,
-            "top_k_images": top_k_paths, # NUOVO CAMPO AGGIUNTO
+            "top_k_images": top_k_paths, 
             "info":     fingerprints,    
             "category": category,
         }
@@ -404,10 +392,10 @@ class DatabaseBuilder:
 
     def build(self) -> dict:
         """
-        Esegue la pipeline completa di build del database.
+        Executes the complete pipeline for building the database.
 
         Returns:
-            dict con success_count, total_concepts, database_path
+            dict with success_count, total_concepts, database_path
         """
         print("\n" + "="*70)
         print("BUILD DATABASE — R2P-GEN FLUX Edition")
@@ -424,14 +412,14 @@ class DatabaseBuilder:
         print("[1/3] Discovering concepts...")
         all_concepts = self._get_concepts()
         if not all_concepts:
-            print("❌ Nessun concept trovato. Controlla R2P_PERVA_DATA.")
+            print("❌ No concepts found. Check R2P_PERVA_DATA.")
             return {"success_count": 0, "total_concepts": 0}
 
-        print(f"   Trovati {len(all_concepts)} concepts.")
+        print(f"   Found {len(all_concepts)} concepts.")
 
         if self.debug_mode:
             all_concepts = all_concepts[:self.debug_limit]
-            print(f"   DEBUG MODE: processing solo {len(all_concepts)} concepts.")
+            print(f"   DEBUG MODE: processing only {len(all_concepts)} concepts.")
 
         # 2. Estrai fingerprints
         print("\n[2/3] Extracting fingerprints (Qwen3-VL)...")
@@ -445,7 +433,7 @@ class DatabaseBuilder:
                 success += 1
             except Exception as e:
                 cid = concept_data.get("concept_id", "?")
-                print(f"\n   ⚠️  Errore su '{cid}': {e}")
+                print(f"\n   ⚠️  Error on '{cid}': {e}")
                 continue
 
         # 3. Save
@@ -487,11 +475,11 @@ if __name__ == "__main__":
                         choices=["train", "test", "all"],
                         help="Dataset split (default: Config.BuildDatabase.DATASET_SPLIT)")
     parser.add_argument("--debug",       action="store_true", default=None,
-                        help="Debug mode: processa solo i primi N concepts")
+                        help="Debug mode: process only the first N concepts")
     parser.add_argument("--debug-limit", type=int, default=None,
-                        help="Numero concepts in debug mode (default: Config.BuildDatabase.DEBUG_LIMIT)")
+                        help="Number of concepts in debug mode (default: Config.BuildDatabase.DEBUG_LIMIT)")
     parser.add_argument("--no-clip",     action="store_true",
-                        help="Disabilita CLIP selection (usa prima immagine)")
+                        help="Disable CLIP selection (use first image)")
     args = parser.parse_args()
 
     builder = DatabaseBuilder(

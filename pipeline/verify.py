@@ -1,18 +1,14 @@
-"""
-R2P Generation Verification - V5 (Qwen3-VL Edition)
+"""R2P Generation Verification (Qwen3-VL).
 
-Replaced:
-  - LLMConfidenceExtractor + MiniCPMAdapter (pipeline/r2p_tools) — dead code path
-  - conf_extractor re-instantiated on every call — wasteful and wrong
+Implements a multi-phase verification pipeline for generated images:
+ 0. CLIP quick-reject on extracted attributes
+ 1. VLM single-attribute checks (Qwen3-VL)
+ 2. CLIP detailed analysis vs. reference
+ 3. Decision gate with Worst-K logic
+ 4. Pairwise VQA comparison (if arbitration required)
 
-With:
-  - reasoner.adapter     : QwenAdapter (message formatting)
-  - reasoner.model_interface.chat() : Qwen3VLModel forward pass
-  - reasoner.conf_calculator        : ConfidenceCalculator (tokenizer-based)
-
-Prompt format updated to JSON {"answer": "yes"/"no"} so that
-ConfidenceCalculator.extract_candidate_indices finds the "answer" trigger token
-then reads the subsequent "yes"/"no" logit — no model-specific hacks needed.
+Returns a dict containing: is_verified, score, method, reason,
+failed_attributes, vlm_history, and clip_details.
 """
 import os
 import re
@@ -124,7 +120,7 @@ def verify_generation_r2p(
     pairwise_mean_threshold: float = 0.60,
 ):
     """
-    R2P Verification Pipeline V5 — Qwen3-VL backend.
+    R2P Verification Pipeline Qwen3-VL.
 
     Pipeline:
         Phase 0: CLIP Quick Reject

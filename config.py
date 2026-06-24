@@ -2,36 +2,28 @@
 Centralized configuration for the R2P-GEN pipeline (FLUX Edition).
 
 Environment variables:
-  R2P_CLUSTER_MODE=true       → abilita cluster mode
-  R2P_MODELS_BASE=<path>      → override base directory modelli (cluster)
-  HF_HOME=<path>              → override HuggingFace cache (gestito esternamente / SLURM)
+  R2P_CLUSTER_MODE=true       → to allow cluster mode
+  R2P_MODELS_BASE=<path>      → override base directory of models (cluster)
+  HF_HOME=<path>              → override HuggingFace cache 
   R2P_FLUX_MODEL=<path>       → override path modello FLUX
 """
 import os
 
 
 # ---------------------------------------------------------------------------
-# Helper: risolve path modelli in modo cluster-agnostico
+# Helper function to determine model paths based on environment variables.
 # ---------------------------------------------------------------------------
 _MODELS_BASE = os.environ.get("R2P_MODELS_BASE", "")
 
 def _model_path(repo_id: str, local_dirname: str) -> str:
     """
-    Restituisce il path locale se R2P_MODELS_BASE è impostato,
-    altrimenti il repo-id HuggingFace (per download automatico).
+    Returns the local path if R2P_MODELS_BASE is set,
+    otherwise the HuggingFace repo-id (for automatic download).
     """
     if _MODELS_BASE:
         return os.path.join(_MODELS_BASE, local_dirname)
     return repo_id
 
-
-# ---------------------------------------------------------------------------
-# FIX NameError: le variabili cluster-aware vengono calcolate a livello di
-# MODULO (fuori da Config), così sono disponibili a tutte le inner class
-# senza dover referenziare Config.Cluster dall'interno di Config stessa.
-# Python non permette alle inner class di vedere le classi-sorella definite
-# prima nella stessa outer class durante la valutazione del corpo della classe.
-# ---------------------------------------------------------------------------
 _CLUSTER_MODE = os.environ.get("R2P_CLUSTER_MODE", "false").lower() == "true"
 
 if _CLUSTER_MODE:
@@ -52,7 +44,6 @@ class Config:
         MODE     = _CLUSTER_MODE
         BASE_DIR = _BASE_DIR
         DATA_BASE = _DATA_BASE
-        # HOME_DIR solo in cluster mode (retrocompatibilità)
         HOME_DIR = os.environ.get("HOME", "/home/user") if _CLUSTER_MODE else None
 
     # ========================================================================
@@ -60,7 +51,6 @@ class Config:
     # ========================================================================
     class BuildDatabase:
         """Configuration for pipeline/build_database.py"""
-        # Usa le variabili di modulo — non Config.Cluster (causa NameError)
         SOURCE_DATA_DIR = os.path.join(_DATA_BASE, "perva-data")
         DATASET_SPLIT = "train"
 
@@ -86,7 +76,7 @@ class Config:
     # ========================================================================
     class Models:
         """
-        Tutti i modelli della pipeline.
+        All models used in the R2P-GEN pipeline (reasoner, judge, FLUX, CLIP, DINO).
 
         In cluster mode: imposta R2P_MODELS_BASE nel SLURM script o .bashrc.
         In locale: i repo_id vengono scaricati automaticamente da HuggingFace.
@@ -98,7 +88,7 @@ class Config:
             local_dirname="Qwen3-VL-8B-Instruct",
         )
 
-        # --- Final Judge (InternVL3_5-8B) — diverso da verify/refine ---
+        # --- Final Judge (InternVL3_5-8B) ---
         JUDGE_MODEL = _model_path(
             repo_id="OpenGVLab/InternVL3-8B",
             local_dirname="InternVL3_5-8B",

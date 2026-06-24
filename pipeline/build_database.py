@@ -122,7 +122,7 @@ def _parse_json_response(raw: str) -> dict:
     if match:
         cleaned = match.group(0)
     else:
-        raise ValueError(f"Nessun JSON trovato nella risposta: {raw[:200]}")
+        raise ValueError(f"No JSON found in the response: {raw[:200]}")
     return json.loads(cleaned)
 
 

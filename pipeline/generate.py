@@ -60,14 +60,13 @@ class Generator:
             
         concept_dict = database.get("concept_dict", {})
         
-        # LOGICA DI SHARDING
         all_keys = sorted(list(concept_dict.keys()))
         chunk_size = len(all_keys) // num_shards
         start_idx = shard_index * chunk_size
         end_idx = start_idx + chunk_size if shard_index < num_shards - 1 else len(all_keys)
         my_keys = all_keys[start_idx:end_idx]
         
-        print(f"🖥️  Worker {shard_index}/{num_shards} - Assegnati {len(my_keys)} concetti su {len(all_keys)} totali.")
+        print(f"🖥️  Worker {shard_index}/{num_shards} - Assigned {len(my_keys)} concepts out of {len(all_keys)} total.")
         stats = {"total": len(my_keys), "success": 0, "failed": 0}
         
         prompts_log = {}
@@ -77,7 +76,7 @@ class Generator:
         for i, concept_id in enumerate(tqdm(my_keys, desc="Generating", unit="img")):
             content = concept_dict[concept_id]
             t_concept = time.time()
-            print(f"\n🎨 [{i+1}/{len(my_keys)}] Elaborazione concetto: {concept_id}")
+            print(f"\n🎨 [{i+1}/{len(my_keys)}] Elaboration concept: {concept_id}")
             try:
                 # 1. Retrieve the source (representative) image
                 source_image_path = content.get("representative_image")
@@ -87,7 +86,7 @@ class Generator:
                     if images:
                         source_image_path = images[0]
                     else:
-                        print(f"   ⚠️ Nessuna immagine sorgente trovata per {concept_id}.")
+                        print(f"   ⚠️ No source image found for {concept_id}.")
                         continue
                 # Make the path absolute for safety
                 source_image_path = os.path.abspath(source_image_path)
@@ -136,7 +135,7 @@ class Generator:
                 # generator = torch.Generator(device=self.device).manual_seed(current_seed)
                 
                 
-                # 4 & 5. Generazione con FLUX (Ablazione Text-Only vs Img2Img)
+                # 4 & 5. Generation with FLUX (Ablation Text-Only vs Img2Img)
                 with torch.inference_mode():
                     if self.no_image_cond:
                         # Conditions A, B: no image input
@@ -181,7 +180,7 @@ class Generator:
                 #         generator=generator
                 #     ).images[0]
                 
-                # 6. Salvataggio Output (percorso assoluto)
+                # 6. Save Output
                 out_path = os.path.join(self.output_dir, f"{concept_id}_generated.png")
                 out_path = os.path.abspath(out_path)
                 output_img.save(out_path)
@@ -197,26 +196,26 @@ class Generator:
                 avg = total_elapsed / (i + 1)
                 remaining = avg * (len(my_keys) - i - 1)
                 stats["success"] += 1
-                print(f"   ✅ Salvato: {os.path.basename(out_path)} "
+                print(f"   ✅ Saved: {os.path.basename(out_path)} "
                     f"| {elapsed:.1f}s | avg {avg:.1f}s/img | ETA {remaining/60:.1f}min")
             except Exception as e:
-                print(f"   ❌ Errore {concept_id}: {str(e)}")
+                print(f"   ❌ Error {concept_id}: {str(e)}")
                 stats["failed"] += 1
         
         # Save the log
         prompts_path = os.path.join(self.output_dir, "prompts.json")
         with open(prompts_path, "w", encoding="utf-8") as f:
             json.dump(prompts_log, f, indent=4, ensure_ascii=False)
-        print(f"   📝 Prompt log salvato → {prompts_path}")
+        print(f"   📝 Prompt log saved → {prompts_path}")
         
         total = time.time() - t_start
-        print(f"\n⏱️  Tempo totale: {total/60:.1f}min | "
+        print(f"\n⏱️  Total time: {total/60:.1f}min | "
             f"avg {total/max(stats['success'],1):.1f}s/img")
         return stats
 
     def cleanup(self):
         """Release memory."""
-        print("\n🧹 Pulizia VRAM da FLUX...")
+        print("\n🧹 Cleanup VRAM from FLUX...")
         if self.pipe is not None:
             del self.pipe
             self.pipe = None

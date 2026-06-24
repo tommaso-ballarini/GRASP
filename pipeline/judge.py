@@ -3,10 +3,7 @@
 Final Judge for the R2P-GEN pipeline.
 
 IMPORTANT: The Final Judge uses a DIFFERENT model than verify.py!
-- verify.py / refine.py loop → MiniCPM / Qwen3-VL (verification during generation)
-- judge.py → InternVL3_5-8B (independent final evaluation)
-
-This ensures an unbiased evaluation: the model that guided refinement is
+This to ensures an unbiased evaluation: the model that guided refinement is
 not the same one that judges the final result.
 
 Final evaluation with:
@@ -35,7 +32,7 @@ from PIL import Image
 from typing import Dict, List, Optional, Union
 from dataclasses import dataclass, field
 
-# Add project paths
+# Project paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 if PROJECT_ROOT not in sys.path:
@@ -78,30 +75,8 @@ class JudgeResult:
 
 class FinalJudge:
     """
-    Final Judge per valutazione immagini generate.
-
-    IMPORTANTE: Usa un modello DIVERSO da verify.py/refine.py!
-    - verify/refine → MiniCPM / Qwen3-VL (guida il refinement)
-    - FinalJudge   → InternVL3_5-8B (valutazione indipendente)
-
-    Combina:
-    - VQA con InternVL3_5-8B per verifica attributi (TIFA-style)
-    - CLIP-I/T per identity e prompt faithfulness
-    - DINO-I per fine-grained identity
-
-    Attributes:
-        vlm_model_path: Path a InternVL3_5-8B
-        metrics_calc: Calculator for CLIP/DINO metrics
-        threshold: Minimum score to pass evaluation
-
-    Example:
-        judge = FinalJudge(threshold=0.85)
-        result = judge.evaluate(gen_img, ref_img, fingerprints, prompt)
-
-        if result.passed:
-            print("✅ Final approval by independent judge!")
-        else:
-            print(f"❌ Failed: {result.attributes_missing}")
+    Defines the Final Judge for R2P-GEN, using InternVL3_5-8B for VQA/TIFA evaluation.
+    
     """
 
     def __init__(
@@ -220,7 +195,6 @@ class FinalJudge:
         if isinstance(image, str):
             image = Image.open(image).convert("RGB")
 
-        # Resize se necessario
         if max(image.size) > Config.MAX_IMAGE_DIM:
             ratio = Config.MAX_IMAGE_DIM / max(image.size)
             new_size = tuple(int(dim * ratio) for dim in image.size)
@@ -339,8 +313,6 @@ class FinalJudge:
     ) -> float:
         """
         Quick evaluation using only CLIP metrics (no VLM loading).
-
-        Useful for fast iteration during refinement loop.
 
         Returns:
             float: Quick score based on CLIP-I (and CLIP-T if prompt provided)

@@ -1,42 +1,30 @@
 #!/usr/bin/env python3
 """
-R2P-GEN Recovery Dashboard — v3
+R2P-GEN Recovery Dashboard
 
-Mostra tre gruppi:
-  ✅ PASSED     — ha superato il verify al primo colpo
-  🔄 RECOVERED  — è entrato nel refine ed è stato salvato
-  💀 GRAVEYARD  — è entrato nel refine ma non è stato recuperato
+Shows the results of the refine/recovery process for all concepts in a run.
 
-Per ogni concept mostra una timeline orizzontale:
-  [Reference] → [Generata originale] → [Tentativo 1] → … → [Finale / Graveyard]
+Shows three groups:
+  ✅ PASSED     — passed the verify base, no refine needed
+  🔄 RECOVERED  — entered refine and was recovered
+  💀 GRAVEYARD  — entered refine but not recovered
 
-Con log completo del verify (fasi, VLM per attributo, CLIP breakdown, metodo di decisione)
-e, per ogni attempt del refine, il dettaglio VLM/CLIP per-attributo prodotto da
-verify_generation_r2p (campi vlm_per_attribute / clip_per_attribute).
+
+For each concept shows horizontal timeline:
+  [Reference] → [Generated] → [Tentative 1] → … → [Final / Graveyard]
 
 Usage:
     python build_recovery_dashboard.py <run_dir>
     python build_recovery_dashboard.py /path/to/output/test_100
 
-Legge (tutti dalla run_dir):
+Reads (all from run_dir):
     prompts.json            — source_image (reference) + output_image (prima generata)
-    recovery_results.json   — esiti refine per-concept + attempts_log (con vlm/clip per-attributo)
-    rejected_concepts.json  — dettagli verify base (vlm_history, clip_details, method…)
+    recovery_results.json   — results of the refine process per-concept + attempts_log (with vlm/clip per-attribute)
+    rejected_concepts.json  — details of the base verify (vlm_history, clip_details, method…)
 
-Genera:
+Generates:
     <run_dir>/recovery_dashboard.html
-    <run_dir>/dash_assets/   — symlink/copie immagini
-
-NOTE v3:
-  - Fix bug "immagine originale": la ricerca del file
-    "<concept>_generated_rejected_attemptN.png" ora usa la chiave GREZZA del
-    concept (con < >, es. "<sng>"), non la versione "safe" usata per i nomi dei
-    file della dashboard — i file reali su disco mantengono le parentesi.
-    Inoltre N non è più fissato a 0 (può essere 0, 1, 2… a seconda di quanti
-    tentativi di refine sono stati fatti prima del successo): si usa un glob.
-  - Nessuna retrocompatibilità con il vecchio formato di recovery_results.json
-    (vlm_avg/clip_score scalari): si assume sempre vlm_per_attribute /
-    clip_per_attribute come dict per-attributo.
+    <run_dir>/dash_assets/   — symlink/copy images
 """
 
 import json
@@ -86,7 +74,7 @@ def score_color(v) -> str:
 
 
 def link_image(src: str, dst: str) -> bool:
-    """Crea symlink (o copia fallback) da src a dst. Ritorna True se ok."""
+    """Create symlink from src to dst. Returns True if successful."""
     if not src or not os.path.exists(src):
         return False
     try:
@@ -105,27 +93,25 @@ def link_image(src: str, dst: str) -> bool:
 
 def find_rejected_original(output_dir: str, concept: str) -> str:
     """
-    Cerca il file <concept>_generated_rejected_attemptN.png nell'output dir.
+    Search the file <concept>_generated_rejected_attemptN.png in the output directory.
 
-    Questo file esiste SOLO se il concept è entrato nel refine ed è stato
-    recuperato (flux_loop.py lo crea quando sovrascrive _generated.png con
-    l'immagine recuperata, salvando prima il contenuto originale di
-    _generated.png, cioè la generazione che aveva fallito il verify base).
+    This file exists ONLY if the concept entered the refine process and was recovered
+    (flux_loop.py creates it when it overwrites _generated.png with the recovered image,
+    saving the original content of _generated.png first, i.e., the generation that failed the base verify).
 
-    N (il suffisso numerico) NON è fisso: rappresenta l'ultimo attempt fallito
-    prima del recovery (0 se il recovery è scattato al primo tentativo di
-    refine, 1 se ci sono voluti due tentativi, ecc.) — per questo si usa un
-    glob invece di un nome fisso "_attempt0".
+    N not fixed: represents last failed attempt before recovery
+    (0 if recovery from first attempt, 1 if two attempts, etc.) — for this reason a
+    glob is used instead of a fixed name "_attempt0".
 
-    IMPORTANTE: 'concept' deve essere la chiave GREZZA del concept (es.
-    "<sng>"), non la versione "safe" (senza < >) usata per i nomi dei file
+    IMPORTANT: 'concept' must be the raw key of the concept (e.g.,
+    "<sng>"), not the "safe" version (without < >) used for file names
     interni della dashboard: i file reali prodotti dalla pipeline mantengono
     le parentesi angolari nel nome.
 
-    Per i concept in graveyard (mai recuperati) questo file non esiste mai:
-    _generated.png non viene mai sovrascritto, quindi resta semplicemente la
-    generazione originale — il chiamante deve fare fallback su quella
-    (first_gen_path / output_image di prompts.json).
+    For concepts in graveyard (never recovered) this file never exists:
+    _generated.png is never overwritten, so it remains simply the
+    original generation — the caller must fallback to that
+    (first_gen_path / output_image of prompts.json).
     """
     pattern = os.path.join(output_dir, f"{concept}_generated_rejected_attempt*.png")
     matches = sorted(glob.glob(pattern))
@@ -148,14 +134,14 @@ def find_latest_run(root_dir: str) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────
-# HTML: singola cella della timeline
+# HTML: single cell of the timeline (label + image)
 # ─────────────────────────────────────────────────────────────
 
 def img_cell(label: str, img_path: str, assets_abs: str, assets_rel: str,
              safe_name: str, suffix: str, extra_css: str = "") -> str:
     """
-    Rende una cella della timeline: etichetta + immagine.
-    Crea il symlink in assets_abs, usa il path relativo assets_rel nel HTML.
+    Render a cell of the timeline: label + image.
+    Creates the symlink in assets_abs, uses the relative path assets_rel in the HTML.
     """
     ext = os.path.splitext(img_path)[1] if img_path else ".png"
     local_fn  = f"{safe_name}__{suffix}{ext}"
@@ -180,14 +166,14 @@ def arrow_cell() -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# HTML: tabelle riusabili VLM / CLIP per-attributo
+# HTML: tables for VLM/CLIP per-attribute breakdown
 # ─────────────────────────────────────────────────────────────
 
 def build_vlm_attr_table(vlm_per_attr: dict) -> str:
     """
-    Tabella VLM per-attributo per un attempt del refine.
-    Formato atteso (da recovery_results.json -> attempts_log[i].vlm_per_attribute):
-        { "<attributo>": {"score":.., "yes_conf":.., "no_conf":.., "response":".."} }
+    Table VLM per-attribute per un attempt of refine.
+    Expected format (from recovery_results.json -> attempts_log[i].vlm_per_attribute):
+        { "<attribute>": {"score":.., "yes_conf":.., "no_conf":.., "response":".."} }
     """
     if not vlm_per_attr:
         return "<em style='color:#6e7681'>Nessun dato VLM per questo attempt.</em>"
@@ -213,9 +199,9 @@ def build_vlm_attr_table(vlm_per_attr: dict) -> str:
 
 def build_clip_attr_table(clip_per_attr: dict) -> str:
     """
-    Tabella CLIP per-attributo per un attempt del refine.
-    Formato atteso (da recovery_results.json -> attempts_log[i].clip_per_attribute):
-        { "<attributo>": {"gen_score":.., "ref_score":.., "delta":..} }
+    Table CLIP per-attribute per un attempt of refine.
+    Expected format (from recovery_results.json -> attempts_log[i].clip_per_attribute):
+        { "<attribute>": {"gen_score":.., "ref_score":.., "delta":..} }
     """
     if not clip_per_attr:
         return "<em style='color:#6e7681'>Nessun dato CLIP per questo attempt.</em>"
@@ -249,8 +235,8 @@ def build_clip_attr_table(clip_per_attr: dict) -> str:
 
 def build_verify_block(reject_data: dict) -> str:
     """
-    Costruisce il blocco con tutti i dettagli del verify base dal rejected_concepts.json.
-    Mostra: metodo di decisione, score, VLM history (tutte le fasi), CLIP breakdown.
+    Build the block with all the details of the base verify from the rejected_concepts.json.
+    Shows: decision method, score, VLM history (all phases), CLIP breakdown.
     """
     if not reject_data:
         return ""
@@ -365,15 +351,15 @@ def build_verify_block(reject_data: dict) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# HTML: blocco attempt log del refine
+# HTML: block attempt log of refine
 # ─────────────────────────────────────────────────────────────
 
 def build_attempt_details(attempt: dict) -> str:
     """
-    Dettagli di un singolo tentativo del refine: prompt, score complessivo,
-    metodo di decisione, attributi ancora mancanti, e il breakdown completo
-    VLM/CLIP per-attributo (da attempt["vlm_per_attribute"] / ["clip_per_attribute"],
-    estratti direttamente dall'output di verify_generation_r2p).
+    Details of a single attempt of the refine: prompt, overall score,
+    decision method, missing attributes, and the complete breakdown
+    VLM/CLIP per-attribute (from attempt["vlm_per_attribute"] / ["clip_per_attribute"],
+    extracted directly from the output of verify_generation_r2p).
     """
     prompt   = attempt.get("prompt_used", "")
     missing  = attempt.get("missing_attributes", [])
