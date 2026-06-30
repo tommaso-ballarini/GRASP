@@ -73,15 +73,15 @@ Reference Image(s)
 
 ### Stage Details
 
-**Stage 0 — Build Database.** Processes a subject dataset (PerVA or DreamBench). A Text-Driven Semantic View Selection step, guided by CLIP, discards noisy or ambiguous views and identifies the single most canonical reference image per subject. Qwen3-VL then extracts structured visual fingerprints — capturing distinctive attributes such as logos, textures, typography, and color patterns — and serializes them into a JSON database.
+**Stage 0: Build Database.** Processes a subject dataset (PerVA or DreamBench). A Text-Driven Semantic View Selection step, guided by CLIP, discards noisy or ambiguous views and identifies the single most canonical reference image per subject. Qwen3-VL then extracts structured visual fingerprints — capturing distinctive attributes such as logos, textures, typography, and color patterns — and serializes them into a JSON database.
 
-**Stage 1 — Generate Only.** The JSON fingerprints are programmatically translated into a Dense Textual Anchor. This anchor, together with the reference image, is passed to FLUX.2-klein-9B operating in Image-to-Image mode (4 inference steps) to generate the subject in a novel context. No external adapter modules are used.
+**Stage 1: Generate Only.** The JSON fingerprints are programmatically translated into a Dense Textual Anchor. This anchor, together with the reference image, is passed to FLUX.2-klein-9B operating in Image-to-Image mode (4 inference steps) to generate the subject in a novel context. No external adapter modules are used.
 
-**Stage 2 — Verify Base.** Each generated image undergoes hierarchical attribute verification. A lightweight CLIP-based quick-reject filters obviously failing generations. Passing images are then subjected to a Logit-Based MLLM Sweep: Qwen3-VL extracts per-token logits to compute a continuous presence probability for each fingerprint attribute. A **Worst-K Detection** policy flags any image where even a single critical attribute is catastrophically absent, routing it to the refinement stage.
+**Stage 2: Verify Base.** Each generated image undergoes hierarchical attribute verification. A lightweight CLIP-based quick-reject filters obviously failing generations. Passing images are then subjected to a Logit-Based MLLM Sweep: Qwen3-VL extracts per-token logits to compute a continuous presence probability for each fingerprint attribute. A **Worst-K Detection** policy flags any image where even a single critical attribute is catastrophically absent, routing it to the refinement stage.
 
-**Stage 3 — Refine.** Rejected images enter a closed recovery loop (maximum 3 iterations). Qwen3-VL acts as an automated Prompt Engineer, applying an **Escalating Prompt Revision** strategy: initial iterations apply semantic emphasis; subsequent iterations escalate to hard typographic anchors (UPPERCASE tokens) for attributes that remain unresolved. Each revised prompt triggers a new generation and verification pass.
+**Stage 3: Refine.** Rejected images enter a closed recovery loop (maximum 3 iterations). Qwen3-VL acts as an automated Prompt Engineer, applying an **Escalating Prompt Revision** strategy: initial iterations apply semantic emphasis; subsequent iterations escalate to hard typographic anchors (UPPERCASE tokens) for attributes that remain unresolved. Each revised prompt triggers a new generation and verification pass.
 
-**Stage 4 — Final Judge.** To eliminate self-evaluation bias, the final assessment is performed by an entirely separate and isolated model, InternVL3.5-8B, which was not involved in any prior stage. It computes CLIP-I (global identity similarity), CLIP-T (text-image alignment), DINO-I via DINOv2 (fine-grained structural fidelity), and a VQA-based TIFA Score (exact attribute verification).
+**Stage 4: Final Judge.** To eliminate self-evaluation bias, the final assessment is performed by an entirely separate and isolated model, InternVL3.5-8B, which was not involved in any prior stage. It computes CLIP-I (global identity similarity), CLIP-T (text-image alignment), DINO-I via DINOv2 (fine-grained structural fidelity), and a VQA-based TIFA Score (exact attribute verification).
 
 ---
 
@@ -290,7 +290,6 @@ All hyperparameters and model paths are centralized in `config.py`. Key settings
 | Config class | Parameter | Default | Description |
 |---|---|---|---|
 | `Config.Generate` | `NUM_INFERENCE_STEPS` | `4` | FLUX denoising steps |
-| `Config.Generate` | `GUIDANCE_SCALE` | `7.5` | Classifier-free guidance scale |
 | `Config.Generate` | `BACKGROUND_STYLE` | `wooden_table` | Background template for generation |
 | `Config.Refine` | `MAX_ITERATIONS` | `3` | Max refinement attempts per concept |
 | `Config.Refine` | `TARGET_ACCURACY` | `0.95` | Target attribute verification score |
@@ -298,22 +297,6 @@ All hyperparameters and model paths are centralized in `config.py`. Key settings
 
 ---
 
-## Citation
-
-If you find this work useful, please cite:
-
-```bibtex
-@misc{r2pgen2025,
-  title     = {R2P-GEN: Retrieval and Reasoning for Personalization -- Generative Edition},
-  author    = {Ballarini, Tommaso and {et al.}},
-  year      = {2025},
-  note      = {Master's Thesis, Foundation Models Course},
-  url       = {https://github.com/tommaso-ballarini/R2P-GEN}
-}
-```
-
----
-
 ## Acknowledgements
 
-This project was developed as part of a Master's degree programme in the context of a **Foundation Models** course. The authors gratefully acknowledge the open-source contributions of the [Black Forest Labs FLUX team](https://github.com/black-forest-labs/flux), the [Qwen team](https://github.com/QwenLM/Qwen2.5-VL), and the [OpenGVLab InternVL team](https://github.com/OpenGVLab/InternVL).
+This project was developed as part of the Foundation Models course for the Master's degree in Data Science at the University of Trento.
