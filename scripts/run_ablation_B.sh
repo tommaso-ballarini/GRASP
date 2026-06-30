@@ -18,13 +18,11 @@ nvidia-smi | head -20
 echo "=========================================================="
 
 module purge
-# Rimosso il modulo profile/deeplrn per non corrompere l'ambiente Conda
 module load cuda/12.2
 module load cudnn
 
 cd /leonardo/home/userexternal/tballari/R2P-GEN
 
-# Usiamo il path assoluto di python del tuo ambiente Conda
 CONDA_PYTHON=/leonardo_work/IscrC_MUSE/tballari/envs/FM_env/bin/python
 
 mkdir -p logs/ablation_B

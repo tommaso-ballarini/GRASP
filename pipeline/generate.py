@@ -32,15 +32,15 @@ class Generator:
         
     def _load_pipeline(self):
         """Load FLUX (T2I or I2I depending on the ablation)."""
-        print(f"\n🚀 Inizializzazione FLUX in corso...")
+        print(f"\n🚀 Initialize FLUX...")
         model_name_or_path = getattr(Config.Models, "FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
         
         # Select the pipeline based on the ablation
         if self.no_image_cond:
-            print("   ℹ️ Modalità Text-Only (no image conditioning) attivata.")
+            print("   ℹ️ Text-Only mode (no image conditioning) activated.")
             pipe_class = AutoPipelineForText2Image
         else:
-            print("   ℹ️ Modalità Image-to-Image attivata.")
+            print("   ℹ️ Image-to-Image mode activated.")
             pipe_class = AutoPipelineForImage2Image
 
         self.pipe = pipe_class.from_pretrained(
@@ -50,7 +50,7 @@ class Generator:
             attn_implementation="flash_attention_2" 
         )
         self.pipe.to(self.device)   
-        print("✅ FLUX caricato con successo.")
+        print("✅ FLUX loaded successfully.")
 
     def generate_all(self):
         num_shards = self.num_shards

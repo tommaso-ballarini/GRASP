@@ -60,10 +60,10 @@ python -u flux_loop.py \
     --output $OUTPUT_DIR
 
 END=$(date +%s)
-echo "⏱️  Tempo verify: $((END - START))s"
+echo "⏱️  Time verify: $((END - START))s"
 
 # ===========================================================================
-# 4. Verifica output
+# 4. Verifying output
 # ===========================================================================
 echo ""
 echo "--- Output check ---"
@@ -79,7 +79,7 @@ for cid, data in r.items():
     print(f'   {cid}: score={data.get(\"score\", \"?\"):.3f} | method={data.get(\"details\", {}).get(\"method\", \"?\")}')
 "
 else
-    echo "❌ rejected_concepts.json NON trovato"
+    echo "❌ rejected_concepts.json not found"
 fi
 
 echo "=========================================================="

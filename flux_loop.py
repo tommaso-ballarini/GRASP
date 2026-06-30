@@ -1,12 +1,12 @@
 """
 R2P-GEN Full Pipeline Orchestrator (FLUX Edition)
 
-Questo modulo orchestra la pipeline R2P-GEN modulare:
-- Stage 1: generate_only (Estrazione + FLUX Img2Img)
-- Stage 2: verify_base (Verifica con Qwen3-VL + CLIP)
-- Stage 3: refine (Aggancio API per rigenerare i falliti)
-- Stage 4: final_judge (Valutazione severa con InternVL2)
-- Stage 5: full_auto (Esegue tutto in sequenza)
+This module orchestrates the R2P-GEN modular pipeline:
+- Stage 1: generate_only (Extraction + FLUX Img2Img)
+- Stage 2: verify_base (Verification with Qwen3-VL + CLIP)
+- Stage 3: refine (API integration for regenerating failed cases)
+- Stage 4: final_judge (Severe evaluation with InternVL2)
+- Stage 5: full_auto (Executes everything in sequence)
 """
 
 import os
@@ -171,7 +171,7 @@ def _build_failed_generation_log_entry(
 #         shard_index=shard_index,
 #     )
 #     stats = generator.generate_all()
-# Aggiorna la definizione della funzione
+
 def stage_generate_only(
     database_path: str,
     output_dir: str,
@@ -196,7 +196,7 @@ def stage_generate_only(
     generator.cleanup()
     cleanup_gpu()
 
-    print(f"\n📊 Generazione: {stats['success']} OK, {stats['failed']} falliti.")
+    print(f"\n📊 Generation: {stats['success']} OK, {stats['failed']} failed.")
     return stats
 
 
@@ -211,7 +211,7 @@ def stage_verify_base(database_path: str, output_dir: str) -> str:
         database = json.load(f)
     concept_dict = database.get("concept_dict", {})
 
-    print("   Caricamento modelli di verifica...")
+    print("   Loading verification models...")
     reasoner = _build_reasoner()
     clip_calculator = ClipScoreCalculator(device="cuda")
 
@@ -222,13 +222,13 @@ def stage_verify_base(database_path: str, output_dir: str) -> str:
         gen_image_path = os.path.join(output_dir, f"{concept_id}_generated.png")
 
         if not os.path.exists(gen_image_path):
-            print(f"   ⚠️  {concept_id}: immagine non trovata → fallita.")
+            print(f"   ⚠️  {concept_id}: image not found → failed.")
             rejected_dict[concept_id] = {"reason": "Image not found"}
             continue
 
         ref_image_path = _get_first_image(content)
         if ref_image_path is None:
-            print(f"   ⚠️  {concept_id}: nessuna immagine di riferimento → skip.")
+            print(f"   ⚠️  {concept_id}: no reference image → skip.")
             rejected_dict[concept_id] = {"reason": "No reference image"}
             continue
 
@@ -263,7 +263,7 @@ def stage_verify_base(database_path: str, output_dir: str) -> str:
         json.dump(rejected_dict, f, indent=4)
 
     total = len(concept_dict)
-    print(f"\n📊 Verifica: {verified_count}/{total} passed. "
+    print(f"\n📊 Verification: {verified_count}/{total} passed. "
           f"{len(rejected_dict)} rejected → {rejected_path}")
     return rejected_path
 
@@ -277,42 +277,42 @@ def stage_refine(
     rejected_path: str,
     output_dir: str,
 ) -> None:
-    """Fase 3: Refine tramite API (closed-loop) in batch su FLUX."""
+    """Stage 3: Refine via API (closed-loop) in batch on FLUX."""
     print(f"\n{'='*70}\n🚑 STAGE: RECOVERY (BATCH MODE)\n{'='*70}")
 
     if not os.path.exists(rejected_path):
-        print("   ✅ Nessun file rejected trovato. Niente da recuperare!")
+        print("   ✅ No rejected file found. Nothing to recover!")
         return
 
     if os.path.getsize(rejected_path) == 0:
-        print("   ❌ rejected_concepts.json esiste ma è vuoto. Abort.")
+        print("   ❌ rejected_concepts.json exists but is empty. Abort.")
         return
 
     with open(rejected_path, "r", encoding="utf-8") as f:
         try:
             rejected_dict = json.load(f)
         except json.JSONDecodeError as e:
-            print(f"   ❌ rejected_concepts.json non è JSON valido: {e}. Abort.")
+            print(f"   ❌ rejected_concepts.json is not valid JSON: {e}. Abort.")
             return
 
     if not rejected_dict:
-        print("   ✅ Lista rejected vuota. Niente da recuperare!")
+        print("   ✅ List rejected is empty. Nothing to recover!")
         return
 
     if not os.path.exists(database_path):
-        print(f"   ❌ Database non trovato: {database_path}. Abort.")
+        print(f"   ❌ Database not found: {database_path}. Abort.")
         return
 
     with open(database_path, "r", encoding="utf-8") as f:
         database = json.load(f)
     concept_dict = database.get("concept_dict", {})
 
-    print(f"   Trovati {len(rejected_dict)} concetti da curare.")
+    print(f"   Found {len(rejected_dict)} concepts to recover.")
 
     FLUX_URL     = getattr(Config.Models, "RECOVERY_FLUX_URL", "http://127.0.0.1:8766")
     MAX_ATTEMPTS = Config.Refine.MAX_ITERATIONS
 
-    print("   Caricamento Qwen3-VL e CLIP in VRAM (GPU 0) per il loop di recovery...")
+    print("   Loading Qwen3-VL and CLIP in VRAM (GPU 0) for the recovery loop...")
     reasoner = _build_reasoner()
     clip_calculator = ClipScoreCalculator(device="cuda")
 
@@ -321,7 +321,7 @@ def stage_refine(
     recovery_report = {}
 
     # -----------------------------------------------------------------------
-    # 1. Inizializza stato per ogni concept
+    # 1. Initialize state for each concept
     # -----------------------------------------------------------------------
     concept_states = {}
     for concept_id, fail_data in rejected_dict.items():
@@ -329,7 +329,7 @@ def stage_refine(
         source_image_path = _get_first_image(content)
 
         if source_image_path is None:
-            print(f"      ⚠️  Nessuna immagine sorgente per {concept_id} → graveyard.")
+            print(f"      ⚠️  No source image found for {concept_id} → graveyard.")
             recovery_report[concept_id] = {
                 "status":               "unrecoverable",
                 "attempts":             0,
@@ -370,7 +370,7 @@ def stage_refine(
         }
 
     # -----------------------------------------------------------------------
-    # 2. Loop per tentativo — batch su tutti i concept attivi
+    # 2. Loop per tentative — batch over all the active concepts
     # -----------------------------------------------------------------------
     for attempt in range(1, MAX_ATTEMPTS + 1):
         active = {cid: s for cid, s in concept_states.items() if not s["is_fixed"]}
@@ -378,7 +378,7 @@ def stage_refine(
             break
 
         print(f"\n   {'='*50}")
-        print(f"   🔄 TENTATIVO {attempt}/{MAX_ATTEMPTS} — {len(active)} concept attivi")
+        print(f"   🔄 TENTATIVE {attempt}/{MAX_ATTEMPTS} — {len(active)} active concepts")
         print(f"   {'='*50}")
 
         prompts_batch  = []
@@ -409,7 +409,7 @@ def stage_refine(
                 attempt=attempt,
                 failed_image_path=failed_image_path,
                 attempts_history=state["attempts_history"],
-                fingerprints=state["fingerprints"],   # ← classification by key
+                fingerprints=state["fingerprints"],  
             )
             print(f"      [{concept_id}] 📝 {new_prompt[:70]}...")
 
@@ -431,7 +431,7 @@ def stage_refine(
             state["_best_source"]            = best_source
 
         # ---- Batch FLUX ----
-        print(f"\n      🚀 Invio batch FLUX: {len(prompts_batch)} immagini...")
+        print(f"\n      🚀 Sending FLUX batch: {len(prompts_batch)} images...")
         batch_results = _generate_batch_http(
             flux_url=FLUX_URL,
             source_image_paths=sources_batch,
@@ -440,7 +440,7 @@ def stage_refine(
             output_paths=paths_batch,
         )
 
-        # ---- Verifica per ogni concept ----
+        # ---- Verification for each concept ----
         for i, concept_id in enumerate(cids_batch):
             state                  = concept_states[concept_id]
             attempt_image_path     = paths_batch[i]
@@ -488,7 +488,7 @@ def stage_refine(
             state["verification"] = verification
 
             if verification["is_verified"]:
-                print(f"      [{concept_id}] ✅ GUARITO al tentativo {attempt}!")
+                print(f"      [{concept_id}] ✅ Saved at attempt {attempt}!")
                 import shutil
 
                 # Rename the previous _generated.png to _generated_rejected_attempt0.png
@@ -500,7 +500,7 @@ def stage_refine(
                 )
                 if os.path.exists(state["gen_image_path"]):
                     os.rename(state["gen_image_path"], rejected_name)
-                    print(f"         📦 Precedente salvata come: {os.path.basename(rejected_name)}")
+                    print(f"         📦 Previous image saved as: {os.path.basename(rejected_name)}")
 
                 shutil.copy2(attempt_image_path, state["gen_image_path"])
                 state["is_fixed"] = True
@@ -520,10 +520,10 @@ def stage_refine(
 
                 state["missing_details"] = new_missing
                 state["current_prompt"]  = new_prompt
-                print(f"      [{concept_id}] ❌ Permangono: {state['missing_details']}")
+                print(f"      [{concept_id}] ❌ Remaining: {state['missing_details']}")
 
     # -----------------------------------------------------------------------
-    # 3. Compilazione report finale
+    # 3. Compilation of final report
     # -----------------------------------------------------------------------
     for concept_id, state in concept_states.items():
         is_fixed     = state["is_fixed"]
@@ -565,8 +565,8 @@ def stage_refine(
     report_path = os.path.join(output_dir, "recovery_results.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(recovery_report, f, indent=4)
-    print(f"\n📋 Report recupero salvato → {report_path}")
-    print(f"\n📊 Recovery: {recovered_count} salvati | {graveyard_count} graveyard")
+    print(f"\n📋 Recovery report saved → {report_path}")
+    print(f"\n📊 Recovery: {recovered_count} saved | {graveyard_count} graveyard")
 
     del reasoner
     del clip_calculator
@@ -582,21 +582,19 @@ def stage_final_judge(database_path: str, output_dir: str) -> None:
     with open(database_path, "r", encoding="utf-8") as f:
         database = json.load(f)
 
-    # 1. Carichiamo i prompt originali
     prompts_path = os.path.join(output_dir, "prompts.json")
     generated_prompts = {}
     if os.path.exists(prompts_path):
         with open(prompts_path, "r", encoding="utf-8") as f:
             generated_prompts = json.load(f)
-        print(f"   📖 File prompts.json caricato.")
+        print(f"   📖 File prompts.json loaded.")
 
-    # 2. Carichiamo i prompt curati dal Refine (se esiste il report)
     recovery_path = os.path.join(output_dir, "recovery_results.json")
     recovery_data = {}
     if os.path.exists(recovery_path):
         with open(recovery_path, "r", encoding="utf-8") as f:
             recovery_data = json.load(f)
-        print(f"   🚑 File recovery_results.json caricato.")
+        print(f"   🚑 File recovery_results.json loaded.")
 
     judge = FinalJudge(
         use_dino=True,
@@ -614,25 +612,23 @@ def stage_final_judge(database_path: str, output_dir: str) -> None:
 
         ref_image_path = _get_first_image(content)
         if ref_image_path is None:
-            print(f"   ⚠️  {concept_id}: nessuna reference → skip.")
+            print(f"   ⚠️  {concept_id}: no reference found → skip.")
             continue
 
         fingerprints = content.get("info", {})
 
-        # --- LOGICA DI SCELTA DEL PROMPT ---
+        # --- Prompt decision ---
         actual_prompt = ""
-        # Partiamo dal prompt originale di generazione
         if concept_id in generated_prompts:
             actual_prompt = generated_prompts[concept_id].get("flux_prompt", "")
         
-        # Se il concetto è passato per il refine ed è stato recuperato,
-        # usiamo il prompt riscritto da Qwen3!
+        # If the concept was recovered, use the last rewritten prompt for evaluation
         if concept_id in recovery_data:
             rec_status = recovery_data[concept_id].get("status")
             rec_prompt = recovery_data[concept_id].get("last_rewritten_prompt")
             if rec_status == "recovered" and rec_prompt:
                 actual_prompt = rec_prompt
-                print(f"   🔄 Uso prompt riscritto per {concept_id}")
+                print(f"   🔄 Using rewritten prompt for {concept_id}")
 
         try:
             judge_eval = judge.evaluate(
@@ -648,14 +644,14 @@ def stage_final_judge(database_path: str, output_dir: str) -> None:
                   f"CLIP-T: {judge_eval.clip_t:.3f} | "
                   f"TIFA: {judge_eval.tifa_score:.1%}")
         except Exception as e:
-            print(f"   ⚠️ Errore su {concept_id}: {e}")
+            print(f"   ⚠️ Error on {concept_id}: {e}")
 
     judge.cleanup()
 
     results_path = os.path.join(output_dir, "final_judge_results.json")
     with open(results_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4)
-    print(f"\n📁 Risultati finali → {results_path}")
+    print(f"\n📁 Final results → {results_path}")
     
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -673,8 +669,8 @@ if __name__ == "__main__":
     parser.add_argument("--shard-index", type=int, default=0)
     
     # ablation's flags
-    parser.add_argument("--naive-prompt", action="store_true", help="Usa un prompt base senza fingerprints")
-    parser.add_argument("--no-image-cond", action="store_true", help="Disabilita l'img2img, usa solo testuale")
+    parser.add_argument("--naive-prompt", action="store_true", help="Use base prompt without fingerprints")
+    parser.add_argument("--no-image-cond", action="store_true", help="Disable img2img, use only text-based")
     
     args = parser.parse_args()
 
@@ -696,10 +692,10 @@ if __name__ == "__main__":
         stage_final_judge(args.database, args.output)
 
     elif args.stage == "full_auto":
-        print("\n🚀 AVVIO PIPELINE FULL AUTO")
+        print("\n🚀 STARTING FULL AUTO PIPELINE")
         stage_generate_only(args.database, args.output,
                             args.num_shards, args.shard_index)
         rejected_path = stage_verify_base(args.database, args.output)
         stage_refine(args.database, rejected_path, args.output)
         stage_final_judge(args.database, args.output)
-        print("\n🏁 PIPELINE COMPLETATA")
+        print("\n🏁 PIPELINE COMPLETED")

@@ -6,6 +6,7 @@ venv/
 env/
 venvs/
 .env
+.env.cluster
 
 # === Logs & Output ===
 logs/

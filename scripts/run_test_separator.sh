@@ -17,7 +17,6 @@ echo "Running on node: $(hostname)"
 nvidia-smi
 echo "=========================================================="
 
-# 1. Caricamento moduli e ambiente
 module purge
 module load profile/deeplrn
 module load cuda/12.2
@@ -25,10 +24,8 @@ module load cudnn
 
 cd /leonardo/home/userexternal/tballari/R2P-GEN
 
-# Definisco in modo hardcoded il path del Python giusto per evitare conflitti HPC
 CONDA_PYTHON=/leonardo_work/IscrC_MUSE/tballari/envs/FM_env/bin/python
 
-# Manteniamo comunque l'activate per settare variabili utili di Conda (es. $CONDA_PREFIX)
 source $HOME/miniconda3/bin/activate FM_env
 
 export PYTHONPATH=$PWD
@@ -38,25 +35,21 @@ export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export RECOVERY_FLUX_URL="http://127.0.0.1:8766"
 
-# 2. Pulizia preventiva degli output vecchi
 OUT_DIR="/leonardo_work/IscrC_MUSE/tballari/FM_Data/output/test_separator"
-echo "Pulisco la cartella di output: $OUT_DIR"
+echo "Cleaning output folder: $OUT_DIR"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-# 3. Avvio del server FLUX in background su GPU 0
 echo ""
-echo "Avvio server FLUX su GPU0 in background..."
-# USO CONDA_PYTHON QUI
+echo "Flux server starting on GPU0 in background..."
 CUDA_VISIBLE_DEVICES=0 $CONDA_PYTHON flux_server.py --port 8766 &
 FLUX_PID=$!
 
-# Polling per aspettare che FLUX sia pronto
-echo "Attendo che il server FLUX sia pronto sulla porta 8766..."
+echo "Waiting for the FLUX server to be ready on port 8766..."
 FLUX_READY=0
 for i in $(seq 1 120); do
     if curl -s -f -o /dev/null "http://127.0.0.1:8766/health"; then
-        echo "✅ FLUX pronto dopo $((i * 5))s."
+        echo "✅ FLUX ready after $((i * 5))s."
         FLUX_READY=1
         break
     fi
@@ -64,23 +57,20 @@ for i in $(seq 1 120); do
 done
 
 if [ "$FLUX_READY" -eq 0 ]; then
-    echo "❌ FLUX non raggiungibile. Abort."
+    echo "❌ FLUX not available. Abort."
     kill $FLUX_PID 2>/dev/null
     exit 1
 fi
 
-# 4. Esecuzione del test Python
 echo ""
-echo "Lancio test_prompt_separator.py..."
-# USO CONDA_PYTHON ANCHE QUI
+echo "Running test_prompt_separator.py..."
 $CONDA_PYTHON -u pipeline/test_prompt_separator.py
 
-# 5. Spegnimento e pulizia
 echo ""
-echo "Test completato. Termino il server FLUX (PID: $FLUX_PID)..."
+echo "Test completed. Finishing the FLUX server (PID: $FLUX_PID)..."
 kill $FLUX_PID
 
 echo "=========================================================="
 echo "Job finished at $(date)"
-echo "Output immagini e JSON salvati in: $OUT_DIR"
+echo "Output images and JSON saved in: $OUT_DIR"
 echo "=========================================================="

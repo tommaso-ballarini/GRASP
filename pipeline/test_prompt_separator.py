@@ -1,16 +1,13 @@
 """
-test_prompt_separator.py
+Test 4 different prompt separation strategies on 3 backpack_dog templates, chosen to maximize bleeding risk.
 
-Test rapido: confronta 4 strategie di separazione prompt su 3 template
-di backpack_dog scelti per massimizzare il rischio di bleeding.
+Tested variants:
+    flat   → current format, no separation
+    sep    → separation with a full stop (old version)
+    scene  → "placed in a scene ..." (environmental anchoring)
+    front  → "photographed in front of ..." (photographic anchoring)
 
-Varianti testate:
-  flat   → formato attuale, nessuna separazione
-  sep    → separazione con punto fermo (vecchia versione)
-  scene  → "placed in a scene ..." (separazione con ancoraggio ambientale)
-  front  → "photographed in front of ..." (ancoraggio fotografico)
-
-Prerequisito: server FLUX attivo su RECOVERY_FLUX_URL (default 8766).
+Prerequisite: FLUX server running on RECOVERY_FLUX_URL (default 8766).
 
 Output: TEST_OUT_DIR/<concept>_<idx>_<variant>_s<seed>.png
 """
@@ -63,14 +60,14 @@ def _split_template(template: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def build_flat(template: str, phrase: str) -> str:
-    """Formato attuale: nessuna separazione."""
+    """Actual format"""
     return template.format(phrase)
 
 
 def build_sep(template: str, phrase: str) -> str:
     """
-    Separazione con punto fermo tra soggetto e scena.
-    Es: "a <phrase>. With a blue house in the background."
+    Separation with a full stop between subject and scene.
+    Example: "a <phrase>. With a blue house in the background."
     """
     prefix, scene = _split_template(template)
     if scene:
@@ -80,10 +77,10 @@ def build_sep(template: str, phrase: str) -> str:
 
 def build_scene(template: str, phrase: str) -> str:
     """
-    Ancoraggio ambientale esplicito con 'placed in a scene'.
-    Es: "a <phrase>, placed in a scene with a blue house in the background"
-    Strategia: la virgola chiude la lista attributi; 'placed in a scene'
-    segnala a FLUX che ciò che segue è contesto, non proprietà dell'oggetto.
+    Explicit ambient anchoring with 'placed in a scene'.
+    Example: "a <phrase>, placed in a scene with a blue house in the background"
+    Strategy: the comma closes the attribute list; 'placed in a scene'
+    signals to FLUX that what follows is context, not a property of the object.
     """
     prefix, scene = _split_template(template)
     if scene:
@@ -93,12 +90,12 @@ def build_scene(template: str, phrase: str) -> str:
 
 def build_front(template: str, phrase: str) -> str:
     """
-    Ancoraggio fotografico con 'photographed in front of' / 'against'.
-    Funziona bene quando la scena è un landmark o uno sfondo architettonico.
-    Es: "a <phrase>, photographed with a blue house in the background"
-    Nota: manteniamo 'with ... in the background' dal template originale
-    per non alterare il significato, ma aggiungiamo il verbo fotografico
-    come separatore semantico forte.
+    Photographic anchoring with 'photographed in front of' / 'against'.
+    Works well when the scene is a landmark or architectural background.
+    Example: "a <phrase>, photographed with a blue house in the background"
+    Note: We keep 'with ... in the background' from the original template
+    to avoid altering the meaning, but we add the photographic verb
+    as a strong semantic separator.
     """
     prefix, scene = _split_template(template)
     if scene:
@@ -119,7 +116,7 @@ VARIANTS: list[tuple[str, callable]] = [
 
 
 # ---------------------------------------------------------------------------
-# Generazione
+# Generation
 # ---------------------------------------------------------------------------
 
 def generate_image(prompt: str, seed: int, output_path: Path) -> bool:
@@ -133,7 +130,7 @@ def generate_image(prompt: str, seed: int, output_path: Path) -> bool:
         data = resp.json()
 
         if data.get("errors", [""])[0]:
-            print(f"   ⚠️  Errore FLUX: {data['errors'][0]}")
+            print(f"   ⚠️  Error FLUX: {data['errors'][0]}")
             return False
 
         img_bytes = base64.b64decode(data["images_b64"][0])
@@ -141,7 +138,7 @@ def generate_image(prompt: str, seed: int, output_path: Path) -> bool:
         return True
 
     except Exception as e:
-        print(f"   ❌ Errore generazione: {e}")
+        print(f"   ❌ Error generation: {e}")
         return False
 
 
@@ -154,7 +151,7 @@ def main():
     print(f"Output → {TEST_OUT}")
     print(f"FLUX   → {FLUX_URL}")
 
-    # Stampa tutti i prompt per ispezione rapida prima di generare
+    # Prints all prompts for quick inspection before generation
     print("\n" + "=" * 70)
     print("PROMPT COMPARISON (tutte le varianti)")
     print("=" * 70)
@@ -164,7 +161,7 @@ def main():
             print(f"  {variant_name:6s}: {fn(tmpl, SUBJECT_PHRASE)}")
     print()
 
-    # Genera
+    # Generate
     results = []
     total   = len(TEST_CASES) * len(VARIANTS) * len(SEEDS)
     done    = 0
@@ -184,18 +181,18 @@ def main():
                 })
                 print(f"         {'✅' if ok else '❌'}")
 
-    # Salva log
+    # save log
     log_path = TEST_OUT / "test_results.json"
     with open(log_path, "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
     ok_count = sum(1 for r in results if r["ok"])
     print(f"\n{'=' * 70}")
-    print(f"Completato: {ok_count}/{total} immagini generate")
+    print(f"Completed: {ok_count}/{total} images generated")
     print(f"Log → {log_path}")
 
-    # Riepilogo coppie da confrontare
-    print(f"\nCoppie da confrontare (per seed):")
+    # save summary of pairs to compare
+    print(f"\nPairs to compare (per seed):")
     for idx in TEST_CASES:
         for seed in SEEDS:
             print(f"\n  [{idx} s{seed}]")

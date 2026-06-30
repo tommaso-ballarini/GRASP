@@ -1,10 +1,10 @@
 """
 flux_server.py
 ==============
-Server FastAPI minimale che espone FLUX come endpoint HTTP.
-Lanciato da recovery_pipeline.sh in background con flux_test_work.
-Gira sulla porta 8766.
-Processa sempre un'immagine alla volta per evitare OOM.
+Minimal FastAPI server that exposes FLUX as an HTTP endpoint.
+Launched by recovery_pipeline.sh in background with flux_test_work.
+Runs on port 8766.
+Processes one image at a time to avoid OOM.
 """
 
 import os
@@ -34,20 +34,20 @@ from diffusers import DiffusionPipeline
 FLUX_MODEL_DIR = "/leonardo_work/IscrC_MUSE/tballari/models_cache/FLUX.2-klein-9B"
 STEPS          = 4
 
-# ── Caricamento modello (una volta sola all'avvio) ───────────────────────────
-print("🚀 Caricamento FLUX in VRAM...")
+# ── Model loading (one time only at startup) ───────────────────────────────────
+print("🚀 Loading FLUX in VRAM...")
 pipe = DiffusionPipeline.from_pretrained(
     FLUX_MODEL_DIR,
     torch_dtype=torch.bfloat16,
     local_files_only=True,
     trust_remote_code=True,
 ).to("cuda:0")
-print("✅ FLUX pronto.")
+print("✅ FLUX ready.")
 
 app = FastAPI()
 
 
-# ── Schemi request/response ──────────────────────────────────────────────────
+# ── request/response schemes──────────────────────────────────────────────────
 
 class GenerateRequest(BaseModel):
     prompts: list[str]
@@ -60,12 +60,12 @@ class GenerateResponse(BaseModel):
     errors: list[str]
 
 
-# ── Logica generazione singola immagine ──────────────────────────────────────
+# ── Logic for generating a single image ──────────────────────────────────────
 
 def _generate_one(prompt: str, seed: int, source_b64: Optional[str]) -> tuple[str, str]:
     """
-    Genera una singola immagine. Ritorna (image_b64, error_string).
-    error_string è "" se OK, messaggio di errore altrimenti.
+    Generates a single image. Returns (image_b64, error_string).
+    error_string is "" if OK, error message otherwise.
     """
     try:
         generator = torch.Generator(device="cuda:0").manual_seed(seed)
@@ -99,8 +99,8 @@ def health():
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
     """
-    Accetta batch di N immagini ma le processa una alla volta
-    per evitare OOM. Il chiamante non deve cambiare nulla.
+    Accepts a batch of N images but processes them one at a time
+    to avoid OOM. The caller does not need to change anything.
     """
     images_b64 = []
     errors = []
@@ -114,10 +114,10 @@ def generate(req: GenerateRequest):
     return GenerateResponse(images_b64=images_b64, errors=errors)
 
 
-# ── Avvio ────────────────────────────────────────────────────────────────────
+# ── Startup ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Server FLUX via FastAPI")
     parser.add_argument("--port", type=int, default=8766)
     args = parser.parse_args()
-    print(f"🌐 Avvio Uvicorn sulla porta dinamica: {args.port}...")
+    print(f"🌐 Starting Uvicorn on dynamic port: {args.port}...")
     uvicorn.run(app, host="127.0.0.1", port=args.port)
