@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=dreambench_eval
-#SBATCH --account=IscrC_MUSE
-#SBATCH --partition=boost_usr_prod
+#SBATCH --job-name=r2p_ablation_A
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
+#SBATCH --partition=<YOUR_SLURM_PARTITION>
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
 #SBATCH --gres=gpu:1
 #SBATCH --time=02:00:00
-#SBATCH --output=logs/dreambench_eval/%j.out
-#SBATCH --error=logs/dreambench_eval/%j.err
+#SBATCH --output=logs/ablation_A/%j.out
+#SBATCH --error=logs/ablation_A/%j.err
 # ===========================================================================
 
 # DreamBench Evaluation(DINO-I / CLIP-I / CLIP-T).
@@ -29,17 +29,17 @@ module purge
 module load profile/deeplrn
 module load cuda/12.2
 module load cudnn
-cd /leonardo/home/userexternal/tballari/R2P-GEN
-source $HOME/miniconda3/bin/activate FM_env
+cd <YOUR_PROJECT_DIR>
+source <YOUR_CONDA_BASE>/bin/activate FM_env
 
 export PYTHONPATH=$PWD
-export HF_HOME=/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface
+export HF_HOME=<YOUR_HF_CACHE_DIR>
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
-TEST_DB_DIR=/leonardo_work/IscrC_MUSE/tballari/FM_Data/output/test_e2e
+TEST_DB_DIR=<YOUR_OUTPUT_DIR>/test_e2e
 TEST_DATABASE=$TEST_DB_DIR/database_db_test.json
 TEST_OUTPUT=$TEST_DB_DIR/output_dreambench_test
 

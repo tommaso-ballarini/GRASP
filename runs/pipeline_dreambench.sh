@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=dreambench_test_e2e
-#SBATCH --account=IscrC_MUSE
-#SBATCH --partition=boost_usr_prod
+#SBATCH --job-name=r2p_ablation_A
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
+#SBATCH --partition=<YOUR_SLURM_PARTITION>
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:2
-#SBATCH --time=12:00:00
-#SBATCH --output=logs/dreambench_test_e2e/%j.out
-#SBATCH --error=logs/dreambench_test_e2e/%j.err
+#SBATCH --mem=128G
+#SBATCH --gres=gpu:1
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/ablation_A/%j.out
+#SBATCH --error=logs/ablation_A/%j.err
 
 # ===========================================================================
 # Test END-TO-END self-contained on 3 concept for debugging:
@@ -33,18 +33,19 @@ module load profile/deeplrn
 module load cuda/12.2
 module load cudnn
 
-cd /leonardo/home/userexternal/tballari/R2P-GEN
-source $HOME/miniconda3/bin/activate FM_env
+cd <YOUR_PROJECT_DIR>
+source <YOUR_CONDA_BASE>/bin/activate FM_env
 
 export PYTHONPATH=$PWD
 
-export HF_HOME=/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface
+export HF_HOME=<YOUR_HF_CACHE_DIR>
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 export RECOVERY_FLUX_URL="http://127.0.0.1:8766"
-export R2P_PERVA_DATA=/leonardo_work/IscrC_MUSE/tballari/FM_Data/dreambench-data
+
+export R2P_PERVA_DATA=<YOUR_DREAMBENCH_DATA_DIR>
 
 ### SANITY CHECK: R2P_PERVA_DATA NEED TO POINT TO DREAMBENCH-DATA, NOT PERVA-DATA ###
 if [ -z "$R2P_PERVA_DATA" ] || [ ! -d "$R2P_PERVA_DATA" ]; then
@@ -54,8 +55,7 @@ fi
 echo "✅ R2P_PERVA_DATA verified: $R2P_PERVA_DATA"
 echo "   Content: $(ls "$R2P_PERVA_DATA/test" 2>/dev/null | tr '\n' ' ')"
 
-
-TEST_DB_DIR=/leonardo_work/IscrC_MUSE/tballari/FM_Data/output/test_e2e
+TEST_DB_DIR=<YOUR_OUTPUT_DIR>/test_e2e
 TEST_DATABASE=$TEST_DB_DIR/database_db_test.json
 TEST_OUTPUT=$TEST_DB_DIR/output_dreambench_test
 

@@ -102,28 +102,31 @@ class Config:
         FLUX_MODEL = _FLUX_PATH
         FLUX_TEXT_URL = "http://127.0.0.1:8767"
 
-        CLIP_MODEL = os.path.join(
-            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
-            "clip-vit-large-patch14/snapshots/32bd64288804d66eefd0ccbe215aa642df71cc41"
+        # --- Modelli CLIP e DINO standardizzati ---
+        CLIP_MODEL = _model_path(
+            repo_id="openai/clip-vit-large-patch14",
+            local_dirname="clip-vit-large-patch14"
         )
 
-        CLIP_MODEL_336 = os.path.join(
-            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
-            "clip-vit-large-patch14-336/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1"
+        CLIP_MODEL_336 = _model_path(
+            repo_id="openai/clip-vit-large-patch14-336",
+            local_dirname="clip-vit-large-patch14-336"
         )
 
-        DINO_MODEL = "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface/dinov2-large"
+        DINO_MODEL = _model_path(
+            repo_id="facebook/dinov2-large",
+            local_dirname="dinov2-large"
+        )
 
         # === Official DreamBench metrics ===
-        # different from the models used in original pipeline, but they are the ones used in the DreamBench paper
-        CLIP_DREAMBENCH_MODEL = os.path.join(
-            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
-            "hub/models--openai--clip-vit-base-patch32/snapshots/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268"
+        CLIP_DREAMBENCH_MODEL = _model_path(
+            repo_id="openai/clip-vit-base-patch32",
+            local_dirname="clip-vit-base-patch32"
         )
         
-        DINO_DREAMBENCH_MODEL = os.path.join(
-            "/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface",
-            "hub/models--facebook--dino-vits16/snapshots/abe3b354cb6a9b6f146096b14a4a9d7eecbcb4bd"
+        DINO_DREAMBENCH_MODEL = _model_path(
+            repo_id="facebook/dino-vits16",
+            local_dirname="dino-vits16"
         )
     
     # ========================================================================

@@ -132,8 +132,8 @@ When `R2P_MODELS_BASE` is not set, all models are downloaded automatically from 
 
 R2P-GEN supports two standard personalization benchmarks:
 
-- **DreamBench** — available at [dreambooth.github.io](https://dreambooth.github.io/)
-- **PerVA** — available at [deepayan137.github.io/papers/training-free-personalization](https://deepayan137.github.io/papers/training-free-personalization.html)
+- **DreamBench**, available at [dreambooth.github.io](https://dreambooth.github.io/)
+- **PerVA**, available at [deepayan137.github.io/papers/training-free-personalization](https://deepayan137.github.io/papers/training-free-personalization.html)
 
 Download and place datasets under `data/`. DreamBench can be prepared using the provided utility:
 

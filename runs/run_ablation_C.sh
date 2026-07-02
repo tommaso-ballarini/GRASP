@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=r2p_ablation_C
-#SBATCH --account=IscrC_MUSE
-#SBATCH --partition=boost_usr_prod
+#SBATCH --job-name=r2p_ablation_A
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
+#SBATCH --partition=<YOUR_SLURM_PARTITION>
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:1
 #SBATCH --time=02:00:00
-#SBATCH --output=logs/ablation_C/%j.out
-#SBATCH --error=logs/ablation_C/%j.err
+#SBATCH --output=logs/ablation_A/%j.out
+#SBATCH --error=logs/ablation_A/%j.err
 
 echo "=========================================================="
 echo "Job started at $(date)"
@@ -21,24 +21,23 @@ module purge
 module load cuda/12.2
 module load cudnn
 
-cd /leonardo/home/userexternal/tballari/R2P-GEN
+cd <YOUR_PROJECT_DIR>
 
-
-CONDA_PYTHON=/leonardo_work/IscrC_MUSE/tballari/envs/FM_env/bin/python
+CONDA_PYTHON=<YOUR_CONDA_ENV_PYTHON>
 
 mkdir -p logs/ablation_C
 
-export R2P_PERVA_DATA=/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data
-export R2P_MODELS_BASE=/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface
+export R2P_PERVA_DATA=<YOUR_PERVA_DATA_DIR>
+export R2P_MODELS_BASE=<YOUR_HF_CACHE_DIR>
 export R2P_CLUSTER_MODE=true
-export HF_HOME=/leonardo_work/IscrC_MUSE/tballari/models_cache/huggingface
-export R2P_FLUX_MODEL=/leonardo_work/IscrC_MUSE/tballari/models_cache/FLUX.2-klein-9B
+export HF_HOME=<YOUR_HF_CACHE_DIR>
+export R2P_FLUX_MODEL=<YOUR_FLUX_MODEL_DIR>
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
-OUTPUT_DIR=/leonardo_work/IscrC_MUSE/tballari/FM_Data/output/ablation_full_C_image_text_naive
+OUTPUT_DIR=<YOUR_OUTPUT_DIR>/ablation_full_C_image_text_naive
 DATABASE=database/database_centroid.json
 
 mkdir -p "$OUTPUT_DIR"

@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=r2p_ablation_F
-#SBATCH --account=IscrC_MUSE
-#SBATCH --partition=boost_usr_prod
+#SBATCH --job-name=r2p_ablation_A
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
+#SBATCH --partition=<YOUR_SLURM_PARTITION>
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --gres=gpu:2
-#SBATCH --time=06:00:00
-#SBATCH --output=logs/ablation_F/%j.out
-#SBATCH --error=logs/ablation_F/%j.err
+#SBATCH --gres=gpu:1
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/ablation_A/%j.out
+#SBATCH --error=logs/ablation_A/%j.err
 
 echo "=========================================================="
 echo "Job started at $(date)"

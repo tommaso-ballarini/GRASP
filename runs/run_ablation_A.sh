@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=r2p_ablation_A
-#SBATCH --account=IscrC_MUSE
-#SBATCH --partition=boost_usr_prod
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
+#SBATCH --partition=<YOUR_SLURM_PARTITION>
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
