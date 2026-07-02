@@ -1,520 +1,478 @@
-# refine.py
 """
-Iterative Refinement Loop con Feedback VLM (verify.py V5)
+Refinement module for R2P-GEN (FLUX Edition).
+Contains the logic for interacting with the API servers (VLM and FLUX)
+to recover failed images.
 
-ARCHITETTURA MEMORY-EFFICIENT:
-==============================
-Per GPU con 24GB (L4), usiamo "model swapping":
-- FASE GENERAZIONE: Carica SDXL (~8GB) → genera → scarica
-- FASE VERIFICA: Carica MiniCPM+CLIP (~18GB) → verifica → scarica
-- Ripeti se necessario
-
-Questo approccio è più lento ma permette di usare modelli grandi
-su GPU limitate. In letteratura: "Model Swapping" o "Sequential Loading".
-
-MODELLI USATI:
-- verify.py (verify_generation_r2p) → MiniCPM + CLIP (guida refinement)
-- Final Judge → Chiamare separatamente da judge.py (Qwen2.5-VL)
-
-LETTERATURA:
-- Negative Prompt refinement: CFG (Ho & Salimans, 2022), SDXL (Podell, 2023)
-- VQA-based verification: TIFA (Hu et al., ICCV 2023)
-- Iterative refinement: Self-Correcting Diffusion (Feng, 2024)
-- Model Swapping: Common in production with limited VRAM
+Escalation strategy (3 levels):
+  - Attempt 1 (gentle):   clear natural language, attributes placed at the start
+  - Attempt 2 (emphatic): stronger adjectives, explicit position/color description
+  - Attempt 3 (maximum):  prompt almost entirely focused on the missing attributes,
+                           described in full detail; scene reduced to minimum
 """
-
 import os
-import sys
+import io
 import json
-import gc
-import torch
-from pathlib import Path
+import base64
+import requests
 from PIL import Image
 
-# Path setup
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
-from config import Config
-from pipeline.utils2 import cleanup_gpu, ensure_output_dir, get_iteration_filename
-from pipeline.verify import verify_generation_r2p
+# ---------------------------------------------------------------------------
+# Attribute classification helpers
+# ---------------------------------------------------------------------------
 
-
-def _full_cleanup():
-    """Force complete VRAM cleanup between model loads."""
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-    cleanup_gpu()
+# Maps fingerprint source key → attribute category for strategy selection
+_KEY_TO_CATEGORY = {
+    "brand/text": "logo_text",
+    "pattern":    "pattern",
+    "color":      "color_material",
+    "material":   "color_material",
+    "shape":      "general",
+    "distinct features": "general",
+}
 
 
-def _load_generator(temp_db_path: str, output_dir: str):
-    """Load SDXL + IP-Adapter generator."""
-    from pipeline.generate import Generator
-    
-    generator = Generator(
-        database_path=temp_db_path,
-        output_dir=output_dir
-    )
-    
-    if not generator._initialize_pipeline():
-        return None
-    
-    return generator
-
-
-def _unload_generator(generator):
-    """Completely unload generator from VRAM."""
-    if generator is None:
-        return
-    
-    if hasattr(generator, 'pipe') and generator.pipe is not None:
-        # Unload all pipeline components
-        if hasattr(generator.pipe, 'to'):
-            try:
-                generator.pipe.to('cpu')
-            except:
-                pass
-        del generator.pipe
-        generator.pipe = None
-    
-    del generator
-    _full_cleanup()
-
-
-def _load_verifier():
-    """Load MiniCPM + CLIP for verification."""
-    from r2p_core.models.mini_cpm_reasoning import MiniCPMReasoning
-    from pipeline.r2p_tools import ClipScoreCalculator
-    
-    print("   📦 Loading MiniCPM Reasoner...")
-    reasoner = MiniCPMReasoning(
-        model_path=Config.VLM_MODEL,
-        device="cuda",
-        torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32,
-        attn_implementation="sdpa",
-        seed=Config.SEED
-    )
-    
-    print("   📦 Loading CLIP Calculator...")
-    clip_calculator = ClipScoreCalculator(device="cuda")
-    
-    return reasoner, clip_calculator
-
-
-def _unload_verifier(reasoner, clip_calculator):
-    """Completely unload verifier models from VRAM."""
-    if reasoner is not None:
-        if hasattr(reasoner, 'model'):
-            del reasoner.model
-        if hasattr(reasoner, 'tokenizer'):
-            del reasoner.tokenizer
-        del reasoner
-    
-    if clip_calculator is not None:
-        if hasattr(clip_calculator, 'model'):
-            del clip_calculator.model
-        if hasattr(clip_calculator, 'processor'):
-            del clip_calculator.processor
-        del clip_calculator
-    
-    _full_cleanup()
-
-
-def iterative_refinement(
-    reference_image_path: str,
-    fingerprints_dict: dict,
-    output_dir: str = "output",
-    # Loop parameters
-    max_iterations: int = None,
-    target_accuracy: float = None,
-    min_improvement: float = None,
-    # Verify V5 parameters (passed to verify_generation_r2p)
-    vlm_high_confidence: float = 0.85,
-    vlm_low_confidence: float = 0.40,
-    worst_k_threshold: float = 0.50,
-):
+def _classify_missing_attributes(missing_details: list, fingerprints: dict) -> dict:
     """
-    Loop di raffinamento iterativo con feedback VLM (verify.py V5).
-    
-    MEMORY-EFFICIENT: Usa "model swapping" per GPU con 24GB.
-    Carica SDXL per generare, poi lo scarica e carica MiniCPM per verificare.
-    
-    Questo modulo è SOLO il loop di refinement. Il Final Judge va
-    chiamato separatamente dopo usando judge.py.
-    
-    Args:
-        reference_image_path: Immagine target da riprodurre
-        fingerprints_dict: Attributi estratti (Fingerprint List)
-        output_dir: Cartella output
-        max_iterations: Override Config.MAX_ITERATIONS
-        target_accuracy: Override Config.TARGET_ACCURACY  
-        min_improvement: Override Config.MIN_IMPROVEMENT
-        vlm_high_confidence: Soglia alta per auto-pass (V5)
-        vlm_low_confidence: Soglia bassa per auto-fail (V5)
-        worst_k_threshold: Soglia per worst-k detection (V5)
-    
-    Returns:
-        dict: {
-            "best_image": path,
-            "best_score": float,
-            "is_verified": bool,
-            "failed_attributes": list,
-            "iterations": int,
-            "verification": dict (ultimo verify result),
-            "history": [...]
-        }
+    For each missing detail string, determine its source fingerprint key category.
+
+    Strategy:
+      1. Build a reverse map: fingerprint_value → fingerprint_key
+      2. Look up each missing detail in that map
+      3. Translate the source key to a category
+
+    Returns
+    -------
+    dict  {detail_string: category_string}
+          category is one of: 'logo_text', 'pattern', 'color_material', 'general'
     """
-    # Config with overrides
-    max_iter = max_iterations or Config.MAX_ITERATIONS
-    target_acc = target_accuracy or Config.TARGET_ACCURACY
-    min_impr = min_improvement or Config.MIN_IMPROVEMENT
-    
-    print(f"\n{'='*60}")
-    print(f"🔁 ITERATIVE REFINEMENT LOOP (verify V5)")
-    print(f"{'='*60}")
-    print(f"   Reference: {Path(reference_image_path).name}")
-    print(f"   Max Iterations: {max_iter}")
-    print(f"   Target Accuracy: {target_acc:.0%}")
-    print(f"\n   📋 Architecture:")
-    print(f"      Refinement: MiniCPM + CLIP (verify_generation_r2p)")
-    print(f"      Final Judge: Call judge.py SEPARATELY after this!")
-    print(f"\n   🧠 Memory Mode: MODEL SWAPPING (for 24GB GPU)")
-    print(f"      → SDXL loaded only during generation")
-    print(f"      → MiniCPM+CLIP loaded only during verification")
-    
-    ensure_output_dir(output_dir)
-    
-    # === CREATE TEMP DATABASE ===
-    temp_db = {
-        "concept_dict": {
-            "refine_target": {
-                "name": Path(reference_image_path).stem,
-                "image": [reference_image_path],
-                "info": fingerprints_dict
-            }
-        }
-    }
-    temp_db_path = os.path.join(output_dir, "_temp_refine_db.json")
-    with open(temp_db_path, 'w') as f:
-        json.dump(temp_db, f)
-    
-    # === STATE VARIABLES ===
-    best_image_path = None
-    best_score = 0.0
-    best_verification = None
-    iteration = 0
-    
-    # Negative prompt dinamico (Prompt Reweighting - CFG/SDXL literature)
-    negative_additions = []
-    
-    # Storia iterazioni
-    history = []
-    
-    # Get SDXL prompt
-    sdxl_prompt = fingerprints_dict.get("sdxl_prompt", fingerprints_dict.get("description", ""))
-    if not sdxl_prompt:
-        print("   ⚠️  No SDXL prompt found, using generic")
-        sdxl_prompt = "high quality product photo"
-    
-    # === REFINEMENT LOOP ===
-    while iteration < max_iter:
-        iteration += 1
-        
-        print(f"\n{'─'*60}")
-        print(f"🔄 ITERATION {iteration}/{max_iter}")
-        print(f"{'─'*60}")
-        
-        # ═══════════════════════════════════════════════════════
-        # PHASE A: GENERATION (load SDXL, generate, unload)
-        # ═══════════════════════════════════════════════════════
-        output_filename = get_iteration_filename(
-            os.path.join(output_dir, f"candidate_{Path(reference_image_path).stem}.png"),
-            iteration
-        )
-        
-        # Costruisci negative prompt cumulativo (letteratura: Prompt Reweighting)
-        current_negative = Config.NEGATIVE_PROMPT
-        if negative_additions:
-            current_negative += ", " + ", ".join(negative_additions[-5:])  # Keep last 5
-            print(f"   🚫 Negatives: {', '.join(negative_additions[-3:])}")
-        
-        generator = None
-        try:
-            print(f"   📦 Loading SDXL + IP-Adapter...")
-            generator = _load_generator(temp_db_path, output_dir)
-            
-            if generator is None:
-                print("   ❌ Failed to initialize SDXL pipeline")
-                break
-            
-            # Load reference image
-            ref_img = Image.open(reference_image_path).convert("RGB")
-            ref_img = ref_img.resize(
-                (Config.REFERENCE_IMAGE_SIZE, Config.REFERENCE_IMAGE_SIZE), 
-                Image.Resampling.LANCZOS
+    value_to_key: dict = {}
+    if fingerprints:
+        for k, v in fingerprints.items():
+            if v and isinstance(v, str):
+                value_to_key[v.strip()] = k
+
+    result = {}
+    for detail in missing_details:
+        source_key = value_to_key.get(detail.strip())
+        result[detail] = _KEY_TO_CATEGORY.get(source_key, "general")
+
+    return result
+
+
+def _build_attribute_instruction(detail: str, category: str, attempt: int) -> str:
+    """
+    Returns a single natural-language instruction for one missing attribute,
+    calibrated to the current attempt level (1=gentle, 2=emphatic, 3=maximum).
+    """
+    if category == "logo_text":
+        if attempt == 1:
+            return (
+                f"ensure the text or logo '{detail}' is clearly legible "
+                f"and prominently visible on the object"
             )
-            
-            # Generate with SDXL + IP-Adapter
-            print(f"   🎨 Generating candidate...")
-            result = generator.pipe(
-                prompt=sdxl_prompt,
-                negative_prompt=current_negative,
-                ip_adapter_image=ref_img,
-                num_inference_steps=Config.NUM_INFERENCE_STEPS,
-                guidance_scale=Config.GUIDANCE_SCALE,
-                height=Config.OUTPUT_IMAGE_SIZE,
-                width=Config.OUTPUT_IMAGE_SIZE,
-                generator=torch.Generator(device=Config.DEVICE).manual_seed(Config.SEED + iteration)
-            ).images[0]
-            
-            result.save(output_filename)
-            print(f"   ✅ Generated: {Path(output_filename).name}")
-            
-            # CRITICAL: Unload SDXL before loading verifier
-            print(f"   📤 Unloading SDXL to free VRAM...")
-            _unload_generator(generator)
-            generator = None
-            
-        except Exception as e:
-            print(f"   ❌ Generation error: {e}")
-            import traceback
-            traceback.print_exc()
-            # Try to cleanup anyway
-            if generator is not None:
-                try:
-                    _unload_generator(generator)
-                except:
-                    pass
-            _full_cleanup()
-            break
-        
-        # ═══════════════════════════════════════════════════════
-        # PHASE B: VERIFICATION (load MiniCPM+CLIP, verify, unload)
-        # ═══════════════════════════════════════════════════════
-        print(f"   ⚖️  Verifying with MiniCPM + CLIP (V5)...")
-        
-        reasoner = None
-        clip_calculator = None
-        try:
-            reasoner, clip_calculator = _load_verifier()
-            
-            verification = verify_generation_r2p(
-                reasoner=reasoner,
-                clip_calculator=clip_calculator,
-                gen_image_path=output_filename,
-                ref_image_path=reference_image_path,
-                fingerprints=fingerprints_dict,
-                vlm_high_confidence=vlm_high_confidence,
-                vlm_low_confidence=vlm_low_confidence,
-                worst_k_vlm_threshold=worst_k_threshold
+        elif attempt == 2:
+            return (
+                f"make the text or logo '{detail}' the most prominent readable element "
+                f"— describe its exact color, style, and position on the object"
             )
-            
-            # CRITICAL: Unload verifier before next iteration
-            print(f"   📤 Unloading verifier to free VRAM...")
-            _unload_verifier(reasoner, clip_calculator)
-            reasoner = None
-            clip_calculator = None
-            
-        except Exception as e:
-            print(f"   ❌ Verification error: {e}")
-            import traceback
-            traceback.print_exc()
-            if reasoner is not None or clip_calculator is not None:
-                try:
-                    _unload_verifier(reasoner, clip_calculator)
-                except:
-                    pass
-            _full_cleanup()
-            # Continue with partial result
-            verification = {"score": 0, "is_verified": False, "failed_attributes": [], "method": "error"}
-        
-        # Extract results
-        current_score = verification["score"]
-        is_verified = verification["is_verified"]
-        failed_attrs = verification.get("failed_attributes", [])
-        method = verification.get("method", "unknown")
-        
-        print(f"\n   📊 Score: {current_score:.2f} | Verified: {is_verified} | Method: {method}")
-        
-        # Save to history
-        history.append({
-            "iteration": iteration,
-            "image": output_filename,
-            "score": current_score,
-            "is_verified": is_verified,
-            "method": method,
-            "failed_attributes": failed_attrs.copy() if failed_attrs else [],
-            "reason": verification.get("reason", "")
-        })
-        
-        # === UPDATE BEST ===
-        improvement = current_score - best_score
-        
-        if current_score > best_score:
-            best_score = current_score
-            best_image_path = output_filename
-            best_verification = verification
-            print(f"   🏆 NEW BEST! Score: {best_score:.2f} (+{improvement:.2f})")
         else:
-            print(f"   📉 No improvement ({improvement:+.2f})")
-        
-        # === EXIT CONDITIONS ===
-        
-        # Success: verification passed (is_verified from V5)
-        if is_verified:
-            print(f"\n   ✅ VERIFIED! Method: {method}")
-            break
-        
-        # Convergence: no significant improvement
-        if iteration > 1 and improvement < min_impr:
-            print(f"\n   🔻 Convergence: improvement {improvement:.3f} < {min_impr}")
-            break
-        
-        # No failed attributes to fix (edge case)
-        if not failed_attrs:
-            print(f"\n   ✅ No failed attributes detected")
-            break
-        
-        # === PROMPT REWEIGHTING (letteratura: CFG, SDXL) ===
-        if iteration < max_iter:
-            print(f"\n   🔧 Prompt Reweighting for iteration {iteration + 1}:")
-            print(f"      Failed attributes: {len(failed_attrs)}")
-            
-            # Build negative prompts from failed attributes
-            new_negatives = build_negative_from_failed(failed_attrs)
-            
-            for neg in new_negatives:
-                if neg not in negative_additions:
-                    negative_additions.append(neg)
-                    print(f"      + Negative: '{neg}'")
-    
-    # === CLEANUP ===
-    _full_cleanup()
-    
-    # Remove temp database
-    if os.path.exists(temp_db_path):
-        os.remove(temp_db_path)
-    
-    # === FINAL REPORT ===
-    final_failed = best_verification.get("failed_attributes", []) if best_verification else []
-    
-    print(f"\n{'='*60}")
-    print(f"🏁 REFINEMENT COMPLETED")
-    print(f"{'='*60}")
-    print(f"   Best Image: {Path(best_image_path).name if best_image_path else 'None'}")
-    print(f"   Best Score: {best_score:.2f}")
-    print(f"   Verified: {best_verification.get('is_verified', False) if best_verification else False}")
-    print(f"   Iterations: {iteration}")
-    print(f"   Method: {best_verification.get('method', 'N/A') if best_verification else 'N/A'}")
-    
-    if final_failed:
-        print(f"\n   ❌ Failed Attributes ({len(final_failed)}):")
-        for attr in final_failed[:5]:
-            print(f"      • {attr[:50]}...")
-        if len(final_failed) > 5:
-            print(f"      ... and {len(final_failed) - 5} more")
-    
-    print(f"\n   💡 Next step: Call judge.py for independent Final Judge!")
-    print(f"{'='*60}")
-    
-    return {
-        "best_image": best_image_path,
-        "best_score": best_score,
-        "is_verified": best_verification.get("is_verified", False) if best_verification else False,
-        "failed_attributes": final_failed,
-        "iterations": iteration,
-        "verification": best_verification,
-        "history": history
+            return (
+                f"describe explicitly the text or logo '{detail}': "
+                f"its exact wording, color, font style, and placement "
+                f"— this is the single defining feature of the object"
+            )
+
+    elif category == "pattern":
+        if attempt == 1:
+            return (
+                f"ensure the '{detail}' is clearly visible "
+                f"with its geometric structure and repetition intact"
+            )
+        elif attempt == 2:
+            return (
+                f"make the '{detail}' the dominant visual texture of the object "
+                f"— describe its geometry, color, and repetition unit explicitly"
+            )
+        else:
+            return (
+                f"build the entire description around the '{detail}': "
+                f"describe its geometry, scale, color, and repetition in full detail "
+                f"— the pattern must be unmistakable"
+            )
+
+    elif category == "color_material":
+        if attempt == 1:
+            return (
+                f"ensure '{detail}' is accurately rendered "
+                f"and immediately recognizable as the object's primary characteristic"
+            )
+        elif attempt == 2:
+            return (
+                f"make '{detail}' unmistakably the primary visual characteristic "
+                f"— place it at the very start of the description and reinforce it"
+            )
+        else:
+            return (
+                f"'{detail}' must be the absolute dominant characteristic "
+                f"— state it explicitly at the beginning and reinforce it later "
+                f"with a supporting phrase"
+            )
+
+    else:  # general
+        if attempt == 1:
+            return f"ensure '{detail}' is clearly visible"
+        elif attempt == 2:
+            return (
+                f"prominently feature '{detail}' as a defining characteristic "
+                f"of the object, described in explicit detail"
+            )
+        else:
+            return (
+                f"make '{detail}' the central focus of the description "
+                f"— detail it explicitly and position it as the defining feature"
+            )
+
+
+def _build_rewrite_instruction(
+    original_prompt: str,
+    missing_details: list,
+    attempt: int,
+    history_context: str,
+    fingerprints: dict,
+) -> str:
+    """
+    Assembles the full rewrite instruction for Qwen3, using per-attribute
+    natural-language guidance calibrated to the attempt level.
+    No SDXL weight syntax is ever used.
+    """
+    classification = _classify_missing_attributes(missing_details, fingerprints or {})
+
+    # Build per-attribute guidance lines
+    attr_lines = "\n".join(
+        f"  - {_build_attribute_instruction(d, classification[d], attempt)}"
+        for d in missing_details
+    )
+
+    if attempt == 1:
+        preamble = (
+            "This image was generated but failed verification. "
+            "Rewrite the prompt to fix the missing attributes listed below.\n"
+            "Place the corrected attributes at the BEGINNING of the prompt "
+            "using clear, descriptive language. "
+            "Keep the scene, object category, background, and framing exactly the same."
+        )
+        closing = (
+            "Use natural descriptive language only — no special syntax or weight notation. "
+            "The rewritten prompt must read as a single fluent paragraph."
+        )
+
+    elif attempt == 2:
+        preamble = (
+            "This image still fails to show the required attributes. "
+            "Rewrite the prompt with stronger, more explicit language for each missing attribute.\n"
+            "Each missing attribute must appear at the very start of the prompt "
+            "with explicit adjectives (e.g. 'prominently featuring', 'clearly showing', "
+            "'with a distinctly visible'). "
+            "Keep the background and scene context, but reduce generic scene description."
+        )
+        closing = (
+            "Use natural descriptive language only — no special syntax or weight notation. "
+            "The rewritten prompt must read as a single fluent paragraph."
+        )
+
+    else:  # attempt 3
+        preamble = (
+            "This image has repeatedly failed to show the required attributes. "
+            "The prompt must now be almost entirely focused on the missing attributes.\n"
+            "Reduce the scene description to the absolute minimum needed to identify "
+            "the object category and background. "
+            "Every remaining token must reinforce the missing attributes."
+        )
+        closing = (
+            "Use natural descriptive language only — no special syntax or weight notation. "
+            "The rewritten prompt must read as a single fluent paragraph. "
+            "The missing attributes must be the first and last things mentioned."
+        )
+
+    instruction = (
+        f"{preamble}\n\n"
+        f"Missing attributes to fix:\n{attr_lines}\n\n"
+        f"{history_context}"
+        f"Original prompt: {original_prompt}\n\n"
+        f"{closing}\n\n"
+        f'Respond ONLY with JSON: {{"rewritten_prompt": "..."}}'
+    )
+
+    return instruction
+
+
+# ---------------------------------------------------------------------------
+# Main rewrite function
+# ---------------------------------------------------------------------------
+
+def qwen3_rewrite_prompt(
+    reasoner,
+    original_prompt: str,
+    missing_details: list,
+    attempt: int,
+    failed_image_path: str = None,
+    attempts_history: list = None,
+    fingerprints: dict = None,
+) -> str:
+    """
+    Rewrites the FLUX prompt using Qwen3-VL in multimodal mode when the
+    failed image is available, or text-only as fallback.
+
+    Parameters
+    ----------
+    reasoner          : Qwen3VLReasoning instance
+    original_prompt   : current prompt that produced the failed image
+    missing_details   : list of attribute strings that failed verification
+    attempt           : current attempt number (1, 2, or 3)
+    failed_image_path : path to the most recent failed generated image
+                        (attempt N-1 image for attempt N;
+                         _generated.png for attempt 1)
+    attempts_history  : list of previous attempt summaries (for context)
+    fingerprints      : fingerprints dict from the database entry
+                        (used to classify attribute types)
+
+    Returns
+    -------
+    str : rewritten prompt, or original_prompt on failure
+    """
+    # --- Build history context string ---
+    history_context = ""
+    if attempts_history:
+        history_context = "Previous attempts summary:\n"
+        for h in attempts_history:
+            status = "improved" if h["improved"] else "no improvement"
+            history_context += (
+                f"  - Attempt {h['attempt']}: "
+                f"missing {h['missing_before']} → after: {h['missing_after']} [{status}]\n"
+            )
+        history_context += "\n"
+
+    instruction = _build_rewrite_instruction(
+        original_prompt=original_prompt,
+        missing_details=missing_details,
+        attempt=attempt,
+        history_context=history_context,
+        fingerprints=fingerprints,
+    )
+
+    gen_text = None
+
+    # --- Multimodal path (failed image available) ---
+    if failed_image_path and os.path.exists(failed_image_path):
+        try:
+            failed_image = Image.open(failed_image_path).convert("RGB")
+            msgs = reasoner.adapter.format_text_options_msgs(failed_image, instruction)
+            _, gen_text = reasoner.model_interface.chat(msgs)
+        except Exception as e:
+            print(f"  [WARN] Multimodal rewrite failed, falling back to text-only: {e}")
+            gen_text = None
+
+    # --- Text-only fallback ---
+    if gen_text is None:
+        sys_msg = (
+            "You are an expert AI prompt engineer for image diffusion models. "
+            "Your task is to rewrite image generation prompts to recover missing "
+            "physical details of an object. "
+            "Use only natural descriptive language — never use weight syntax like (term:1.4). "
+            'Output ONLY valid JSON: {"rewritten_prompt": "..."}'
+        )
+        msgs = [
+            {"role": "system", "content": sys_msg},
+            {"role": "user",   "content": instruction},
+        ]
+        _, gen_text = reasoner.model_interface.chat(msgs)
+
+    # --- Parse JSON response ---
+    try:
+        clean_text = gen_text.strip().removeprefix("```json").removesuffix("```").strip()
+        parsed = json.loads(clean_text)
+        return parsed.get("rewritten_prompt", original_prompt)
+    except Exception as e:
+        print(f"  [WARN] JSON parse failed: {e}\nRaw: {gen_text}")
+        return original_prompt
+
+
+# ---------------------------------------------------------------------------
+# Single-image HTTP generation (legacy, kept for compatibility)
+# ---------------------------------------------------------------------------
+
+def generate_recovery_http(
+    flux_url: str,
+    source_image_path: str,
+    prompt: str,
+    seed: int,
+    output_path: str,
+    max_retries: int = 2,
+) -> bool:
+    """
+    Sends a single image + prompt to the FLUX HTTP server.
+    Checks /health before each attempt.
+    """
+    if not os.path.exists(source_image_path):
+        print(f"  ❌ Source image not found: {source_image_path}")
+        return False
+
+    try:
+        img = Image.open(source_image_path).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        b64_string = base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        print(f"  ❌ Error reading source image: {e}")
+        return False
+
+    payload = {
+        "prompts": [prompt],
+        "seeds":   [seed],
+        "source_image_b64": [b64_string],
     }
 
+    for retry in range(max_retries + 1):
+        try:
+            health = requests.get(f"{flux_url}/health", timeout=5)
+            if health.status_code != 200:
+                raise ConnectionError("Server not healthy")
+        except Exception as e:
+            print(f"  ⚠️ FLUX unreachable (retry {retry}/{max_retries}): {e}")
+            if retry < max_retries:
+                import time
+                time.sleep(10)
+                continue
+            print("  ❌ FLUX unreachable after all retries.")
+            return False
 
-def build_negative_from_failed(failed_attributes: list) -> list:
+        try:
+            response = requests.post(f"{flux_url}/generate", json=payload, timeout=360)
+            response.raise_for_status()
+            result = response.json()
+
+            error_msg = result.get("errors", [""])[0]
+            if error_msg:
+                print(f"  ❌ FLUX internal error: {error_msg}")
+                return False
+
+            img_b64 = result.get("images_b64", [""])[0]
+            if not img_b64:
+                print("  ❌ FLUX returned empty image.")
+                return False
+
+            img_bytes = base64.b64decode(img_b64)
+            recovered_img = Image.open(io.BytesIO(img_bytes))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            recovered_img.save(output_path)
+            return True
+
+        except requests.Timeout:
+            print(f"  ⚠️ FLUX timeout (retry {retry}/{max_retries}).")
+            if retry < max_retries:
+                import time
+                time.sleep(5)
+                continue
+            print("  ❌ FLUX timeout after all retries.")
+            return False
+
+        except Exception as e:
+            print(f"  ❌ FLUX API error: {e}")
+            return False
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Batch HTTP generation
+# ---------------------------------------------------------------------------
+
+def _generate_batch_http(
+    flux_url: str,
+    source_image_paths: list,
+    prompts: list,
+    seeds: list,
+    output_paths: list,
+    max_retries: int = 2,
+) -> list:
     """
-    Costruisce negative prompts da attributi falliti (dal verify V5).
-    
-    Letteratura:
-    - Negative Prompt Guidance (Ho & Salimans, 2022)
-    - SDXL Negative prompting (Podell, 2023)
-    
-    Args:
-        failed_attributes: Lista di stringhe attributo mancanti
-        
-    Returns:
-        Lista di stringhe per negative prompt
+    Sends a batch of images+prompts to the FLUX HTTP server in one call.
+    Returns a list of bool (True = success) for each batch element.
     """
-    negatives = []
-    
-    for attr in failed_attributes:
-        attr_lower = attr.lower()
-        
-        # Pattern matching per tipi comuni di attributi
-        if "color" in attr_lower or any(c in attr_lower for c in ["red", "blue", "green", "black", "white"]):
-            negatives.append(f"wrong color, incorrect hue")
-        elif "brand" in attr_lower or "logo" in attr_lower or "text" in attr_lower:
-            negatives.append("without brand logo, missing text, incorrect branding")
-        elif "material" in attr_lower or any(m in attr_lower for m in ["leather", "plastic", "metal", "fabric"]):
-            negatives.append(f"wrong material texture")
-        elif "pattern" in attr_lower or any(p in attr_lower for p in ["stripe", "check", "solid"]):
-            negatives.append("wrong pattern")
-        elif "shape" in attr_lower:
-            negatives.append("wrong shape, incorrect form")
-        else:
-            # Generic: quote the missing attribute
-            negatives.append(f"missing {attr[:30]}")
-    
-    # Deduplicate
-    return list(dict.fromkeys(negatives))
+    results = [False] * len(prompts)
 
+    # Encode source images
+    sources_b64 = []
+    for path in source_image_paths:
+        try:
+            img = Image.open(path).convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG")
+            sources_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+        except Exception as e:
+            print(f"  ❌ Error reading {path}: {e}")
+            sources_b64.append(None)
 
-# ============================================================================
-# STANDALONE TEST
-# ============================================================================
+    sources_b64_clean = [b or "" for b in sources_b64]
 
-if __name__ == "__main__":
-    print("\n📋 Refine Module - Iterative Refinement with verify V5")
-    print("─" * 60)
-    print("""
-USAGE:
-    from pipeline.refine import iterative_refinement
-    from pipeline.judge import FinalJudge
-    
-    # Step 1: Iterative Refinement
-    result = iterative_refinement(
-        reference_image_path="data/target.jpg",
-        fingerprints_dict={
-            "color": "blue",
-            "material": "leather",
-            "sdxl_prompt": "(blue leather bag:1.3), ..."
-        },
-        output_dir="output/refinement"
-    )
-    
-    # Step 2: Final Judge (SEPARATE - modular)
-    if result["best_image"]:
-        judge = FinalJudge()  # Uses Qwen2.5-VL (different from MiniCPM!)
-        judge_result = judge.evaluate(
-            generated_image=result["best_image"],
-            reference_image="data/target.jpg",
-            fingerprints=fingerprints_dict,
-            prompt=fingerprints_dict.get("sdxl_prompt", "")
-        )
-        
-        print(f"Refinement passed: {result['is_verified']}")
-        print(f"Final Judge passed: {judge_result.passed}")
+    payload = {
+        "prompts":         prompts,
+        "seeds":           seeds,
+        "source_image_b64": sources_b64_clean,
+    }
 
-FLOW:
-    1. Iterative refinement with MiniCPM + CLIP (verify V5)
-    2. Dynamic negative prompt updates from failed_attributes
-    3. Exit when is_verified=True or convergence
-    4. Call FinalJudge separately for independent evaluation
+    for retry in range(max_retries + 1):
+        try:
+            health = requests.get(f"{flux_url}/health", timeout=5)
+            if health.status_code != 200:
+                raise ConnectionError("Server not healthy")
+        except Exception as e:
+            print(f"  ⚠️ FLUX unreachable (retry {retry}/{max_retries}): {e}")
+            if retry < max_retries:
+                import time
+                time.sleep(10)
+                continue
+            return results
 
-MEMORY MODE:
-    This module uses MODEL SWAPPING for 24GB GPUs:
-    - SDXL (~8GB) loaded/unloaded for each generation
-    - MiniCPM+CLIP (~18GB) loaded/unloaded for each verification
-    Slower but memory-safe!
-    """)
+        try:
+            response = requests.post(
+                f"{flux_url}/generate", json=payload, timeout=360
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            images_b64 = result.get("images_b64", [])
+            errors     = result.get("errors", [""] * len(prompts))
+
+            for i, (img_b64, err) in enumerate(zip(images_b64, errors)):
+                if err:
+                    print(f"  ❌ FLUX error item {i}: {err}")
+                    continue
+                if not img_b64:
+                    print(f"  ❌ FLUX item {i}: empty image.")
+                    continue
+                try:
+                    img_bytes = base64.b64decode(img_b64)
+                    img = Image.open(io.BytesIO(img_bytes))
+                    os.makedirs(os.path.dirname(output_paths[i]), exist_ok=True)
+                    img.save(output_paths[i])
+                    results[i] = True
+                except Exception as e:
+                    print(f"  ❌ Error saving item {i}: {e}")
+
+            return results
+
+        except requests.Timeout:
+            print(f"  ⚠️ FLUX timeout (retry {retry}/{max_retries}).")
+            if retry < max_retries:
+                import time
+                time.sleep(5)
+                continue
+            return results
+
+        except Exception as e:
+            print(f"  ❌ FLUX API error: {e}")
+            return results
+
+    return results

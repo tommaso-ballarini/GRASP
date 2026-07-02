@@ -1,25 +1,29 @@
 # pipeline/metrics.py
 """
-Metriche di Valutazione per Image Personalization.
-Supportate dalla letteratura:
+Metrics for evaluating image personalization quality:
 - CLIP-I: Identity preservation via CLIP image embeddings
 - CLIP-T: Text-image alignment via CLIP
 - DINO-I: Identity preservation via DINO features (texture/details)
 - TIFA: VQA-based attribute faithfulness
 
-References:
-- TIFA (Hu et al., ICCV 2023): VQA-based faithfulness evaluation
-- CLIP (Radford et al., 2021): Vision-language similarity
-- DINO (Caron et al., 2021): Self-supervised visual features
-- DreamBooth (Ruiz et al., CVPR 2023): CLIP-I/DINO-I for personalization
 """
 
+import os
+import sys
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from typing import Dict, List, Tuple, Optional, Union
 from dataclasses import dataclass
 import numpy as np
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from config import Config
 
 
 @dataclass
@@ -42,12 +46,26 @@ class MetricsResult:
             "final_score": self.final_score
         }
 
+def _extract_features(output):
+    """
+    Extract features from the output of a model, handling different possible return types.
+    """
+
+    if torch.is_tensor(output):
+        return output
+    if hasattr(output, "image_embeds"):
+        return output.image_embeds
+    if hasattr(output, "text_embeds"):
+        return output.text_embeds
+    if hasattr(output, "pooler_output"):
+        return output.pooler_output
+    if hasattr(output, "last_hidden_state"):
+        return output.last_hidden_state[:, 0, :]  # fallback: CLS token
+    raise TypeError(f"Impossibile estrarre le feature da {type(output)}")
 
 class MetricsCalculator:
     """
-    Calcola metriche di valutazione per image personalization.
-    
-    Lazy loading: i modelli vengono caricati solo quando necessario.
+    Class to compute evaluation metrics for image personalization.
     """
     
     def __init__(self, device: str = "cuda"):
@@ -77,29 +95,21 @@ class MetricsCalculator:
         if self._clip_model is None:
             print("   📦 Loading CLIP model...")
             from transformers import CLIPModel, CLIPProcessor
-            self._clip_model = CLIPModel.from_pretrained(
-                "openai/clip-vit-large-patch14"
-            ).to(self.device).eval()
-            self._clip_processor = CLIPProcessor.from_pretrained(
-                "openai/clip-vit-large-patch14"
-            )
+            self._clip_model = CLIPModel.from_pretrained(Config.Models.CLIP_MODEL).to(self.device).eval()
+            self._clip_processor = CLIPProcessor.from_pretrained(Config.Models.CLIP_MODEL)
         return self._clip_model, self._clip_processor
     
     @property
     def dino_model(self):
-        """Lazy load DINO model."""
+        """Lazy load DINO model (via transformers, not torch.hub: torch.hub
+        contacts GitHub directly and ignores HF_HUB_OFFLINE, so it fails on
+        offline nodes even when the HF cache is already populated)."""
         if self._dino_model is None:
             print("   📦 Loading DINO model...")
-            self._dino_model = torch.hub.load(
-                'facebookresearch/dinov2', 'dinov2_vitl14'
-            ).to(self.device).eval()
-            from torchvision import transforms
-            self._dino_processor = transforms.Compose([
-                transforms.Resize(518, interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.CenterCrop(518),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+            from transformers import AutoModel, AutoImageProcessor
+            dino_id = getattr(Config.Models, "DINO_MODEL", "facebook/dinov2-large")
+            self._dino_model = AutoModel.from_pretrained(dino_id).to(self.device).eval()
+            self._dino_processor = AutoImageProcessor.from_pretrained(dino_id)
         return self._dino_model, self._dino_processor
     
     # ========================================================================
@@ -113,10 +123,7 @@ class MetricsCalculator:
     ) -> float:
         """
         CLIP-I: Cosine similarity between CLIP embeddings of generated and reference images.
-        
-        Used by DreamBooth and IP-Adapter papers for identity preservation.
-        Higher = better identity preservation.
-        
+    
         Args:
             generated_image: Generated image path or PIL Image
             reference_image: Reference/target image path or PIL Image
@@ -137,8 +144,8 @@ class MetricsCalculator:
             gen_inputs = processor(images=generated_image, return_tensors="pt").to(self.device)
             ref_inputs = processor(images=reference_image, return_tensors="pt").to(self.device)
             
-            gen_features = model.get_image_features(**gen_inputs)
-            ref_features = model.get_image_features(**ref_inputs)
+            gen_features = _extract_features(model.get_image_features(**gen_inputs))
+            ref_features = _extract_features(model.get_image_features(**ref_inputs))
             
             # Normalize
             gen_features = F.normalize(gen_features, p=2, dim=-1)
@@ -157,9 +164,6 @@ class MetricsCalculator:
         """
         CLIP-T: Cosine similarity between generated image and text prompt.
         
-        Measures prompt faithfulness / text-image alignment.
-        Higher = better prompt following.
-        
         Args:
             generated_image: Generated image path or PIL Image
             prompt: SDXL prompt used for generation
@@ -175,11 +179,13 @@ class MetricsCalculator:
         with torch.no_grad():
             # Get image features
             img_inputs = processor(images=generated_image, return_tensors="pt").to(self.device)
-            img_features = model.get_image_features(**img_inputs)
+            img_features = _extract_features(model.get_image_features(**img_inputs))
+
             
             # Get text features
             text_inputs = processor(text=prompt, return_tensors="pt", truncation=True).to(self.device)
-            text_features = model.get_text_features(**text_inputs)
+            text_features = _extract_features(model.get_text_features(**text_inputs))
+
             
             # Normalize
             img_features = F.normalize(img_features, p=2, dim=-1)
@@ -202,10 +208,6 @@ class MetricsCalculator:
         """
         DINO-I: Cosine similarity between DINOv2 features.
         
-        DINO features are better than CLIP for fine-grained visual details
-        (texture, material, small features). Used in DreamBooth evaluation.
-        Higher = better identity preservation at detail level.
-        
         Args:
             generated_image: Generated image path or PIL Image
             reference_image: Reference/target image path or PIL Image
@@ -222,13 +224,11 @@ class MetricsCalculator:
             reference_image = Image.open(reference_image).convert("RGB")
         
         with torch.no_grad():
-            # Process images
-            gen_tensor = processor(generated_image).unsqueeze(0).to(self.device)
-            ref_tensor = processor(reference_image).unsqueeze(0).to(self.device)
-            
-            # Get CLS token features
-            gen_features = model(gen_tensor)
-            ref_features = model(ref_tensor)
+            gen_inputs = processor(images=generated_image, return_tensors="pt").to(self.device)
+            ref_inputs = processor(images=reference_image, return_tensors="pt").to(self.device)
+
+            gen_features = model(**gen_inputs).pooler_output
+            ref_features = model(**ref_inputs).pooler_output
             
             # Normalize
             gen_features = F.normalize(gen_features, p=2, dim=-1)
@@ -269,7 +269,7 @@ class MetricsCalculator:
             if any(neg in value_lower for neg in ["none", "n/a", "unknown", "no visible"]):
                 continue
             
-            # Generate question based on attribute type
+            # Generate a question based on the attribute type
             if attr == "color":
                 question = f"Is the main color of the object {value}?"
             elif attr == "material":

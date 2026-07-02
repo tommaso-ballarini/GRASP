@@ -6,6 +6,7 @@ venv/
 env/
 venvs/
 .env
+.env.cluster
 
 # === Logs & Output ===
 logs/
@@ -20,7 +21,8 @@ logs/
 # Evita di caricare GB di modelli su git
 output/
 checkpoints/
-models/
+output_dreambench/
+
 *.pth
 *.safetensors
 *.bin
@@ -31,4 +33,3 @@ models/
 .DS_Store
 
 data/*
-

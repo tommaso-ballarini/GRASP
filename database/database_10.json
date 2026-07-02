@@ -1,0 +1,418 @@
+{
+    "concept_dict": {
+        "<alx>": {
+            "name": "alx",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/8.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/8.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/5.jpg"
+            ],
+            "info": {
+                "general": "<alx> is a stylish laptop bag with a distinctive damask pattern and brown leather accents.",
+                "category": "Laptop Bag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Fabric with leather trim",
+                "color": "Beige base with black damask pattern and brown leather",
+                "pattern": "Damask pattern",
+                "brand/text": "ZODIAC",
+                "distinct features": "Combines elegant damask fabric with leather handles and zipper trim"
+            },
+            "category": "bag"
+        },
+        "<ash>": {
+            "name": "ash",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/9.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/7.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/3.jpg"
+            ],
+            "info": {
+                "general": "<ash> is a stylish bucket bag with bold black stripes and contrasting brown leather accents.",
+                "category": "Bag",
+                "shape": "Bucket shape with a wide, open top",
+                "material": "Canvas with leather trim",
+                "color": "White with black stripes and brown leather details",
+                "pattern": "Horizontal black stripes",
+                "brand/text": "none",
+                "distinct features": "Combination of canvas and leather, bold stripe pattern, and structured bucket design"
+            },
+            "category": "bag"
+        },
+        "<bkq>": {
+            "name": "bkq",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/10.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/11.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/12.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/13.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/14.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/15.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/16.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/17.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/18.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/19.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/20.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/9.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/9.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/9.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/11.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/15.jpg"
+            ],
+            "info": {
+                "general": "<bkq> is a light blue crossbody bag with a minimalist design and a visible price tag.",
+                "category": "Bag",
+                "shape": "Compact and rectangular with rounded corners",
+                "material": "Leather or faux leather",
+                "color": "Light blue",
+                "pattern": "none",
+                "brand/text": "none",
+                "distinct features": "Attached price tag indicating it is new and possibly unopened"
+            },
+            "category": "bag"
+        },
+        "<bxa>": {
+            "name": "bxa",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/9.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/2.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/4.jpg"
+            ],
+            "info": {
+                "general": "<bxa> is a luxury handbag with a signature monogram pattern and leather straps.",
+                "category": "Handbag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Leather",
+                "color": "Brown with gold-colored monogram",
+                "pattern": "Monogram pattern with repeating LV logos and floral motifs",
+                "brand/text": "LV (Louis Vuitton) monogram",
+                "distinct features": "Iconic LV monogram pattern, leather straps with metal hardware"
+            },
+            "category": "bag"
+        },
+        "<dbi>": {
+            "name": "dbi",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/8.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/7.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/4.jpg"
+            ],
+            "info": {
+                "general": "<dbi> is a bright yellow, zippered utility bag with branding for 'Ultratech' and 'Milton'.",
+                "category": "Bag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Fabric",
+                "color": "Yellow with black zipper and trim",
+                "pattern": "none",
+                "brand/text": "Ultratech, The Engineer's Choice, Milton",
+                "distinct features": "Prominent branding and bright yellow color make it highly visible and professional-looking"
+            },
+            "category": "bag"
+        },
+        "<dcw>": {
+            "name": "dcw",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/8.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/1.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/3.jpg"
+            ],
+            "info": {
+                "general": "<dcw> is a rich brown leather handbag with a textured surface and contrasting yellow stitching.",
+                "category": "Handbag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Leather",
+                "color": "Brown",
+                "pattern": "none",
+                "brand/text": "none",
+                "distinct features": "Peppered leather texture and visible yellow stitching along seams and zipper"
+            },
+            "category": "bag"
+        },
+        "<efd>": {
+            "name": "efd",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/7.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/5.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/3.jpg"
+            ],
+            "info": {
+                "general": "<efd> is a purple gift bag with a golden rose emblem and '24K Golden Rose' text.",
+                "category": "Gift Bag",
+                "shape": "Rectangular with handles",
+                "material": "Paper",
+                "color": "Purple with gold and white accents",
+                "pattern": "White swirling scrollwork pattern",
+                "brand/text": "24K Golden Rose",
+                "distinct features": "Golden rose emblem and '24K' text suggest luxury or high-end branding"
+            },
+            "category": "bag"
+        },
+        "<fhe>": {
+            "name": "fhe",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/8.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/2.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/8.jpg"
+            ],
+            "info": {
+                "general": "<fhe> is a rectangular paper bag with a black floral pattern and a natural fiber rope handle.",
+                "category": "Gift Bag",
+                "shape": "Rectangular prism",
+                "material": "Paper",
+                "color": "Brown paper with black printed design",
+                "pattern": "Black floral and vine pattern",
+                "brand/text": "none",
+                "distinct features": "Black floral pattern on brown paper and natural fiber rope handle"
+            },
+            "category": "bag"
+        },
+        "<foi>": {
+            "name": "foi",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/8.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/8.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/6.jpg"
+            ],
+            "info": {
+                "general": "<foi> is a vibrantly embroidered clutch bag with a floral pattern on a tan fabric background.",
+                "category": "Clutch Bag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Fabric",
+                "color": "Tan base with bright pink, blue, and orange embroidery",
+                "pattern": "Floral pattern with stylized flowers and leaves",
+                "brand/text": "none",
+                "distinct features": "Rich, colorful embroidery with intricate floral designs that stand out against the tan background"
+            },
+            "category": "bag"
+        },
+        "<fzn>": {
+            "name": "fzn",
+            "image": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/1.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/10.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/11.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/2.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/3.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/4.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/5.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/6.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/7.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/9.jpg"
+            ],
+            "representative_image": "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/9.jpg",
+            "top_k_images": [
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/9.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/8.jpg",
+                "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/6.jpg"
+            ],
+            "info": {
+                "general": "<fzn> is a glamorous clutch bag entirely covered in sparkling beads with a gold-tone handle and clasp.",
+                "category": "Clutch Bag",
+                "shape": "Rectangular with rounded corners",
+                "material": "Metallic frame with beaded surface",
+                "color": "Gold and silver tones",
+                "pattern": "Uniform beaded texture",
+                "brand/text": "none",
+                "distinct features": "Fully beaded exterior and gold-tone hardware"
+            },
+            "category": "bag"
+        }
+    },
+    "path_to_concept": {
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/1.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/2.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/3.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/4.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/5.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/6.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/7.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/alx/8.jpg": "<alx>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/1.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/2.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/3.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/4.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/5.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/6.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/7.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/8.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/ash/9.jpg": "<ash>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/1.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/10.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/11.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/12.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/13.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/14.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/15.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/16.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/17.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/18.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/19.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/2.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/20.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/3.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/4.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/5.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/6.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/7.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/8.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bkq/9.jpg": "<bkq>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/1.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/2.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/3.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/4.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/5.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/6.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/7.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/8.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/bxa/9.jpg": "<bxa>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/1.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/2.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/3.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/4.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/5.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/6.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/7.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dbi/8.jpg": "<dbi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/1.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/2.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/3.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/4.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/5.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/6.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/7.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/dcw/8.jpg": "<dcw>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/1.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/2.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/3.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/4.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/5.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/6.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/efd/7.jpg": "<efd>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/1.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/2.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/3.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/4.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/5.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/6.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/7.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fhe/8.jpg": "<fhe>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/1.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/2.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/3.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/4.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/5.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/6.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/7.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/foi/8.jpg": "<foi>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/1.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/10.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/11.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/2.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/3.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/4.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/5.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/6.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/7.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/8.jpg": "<fzn>",
+        "/leonardo_work/IscrC_MUSE/tballari/FM_Data/data/perva-data/train/bag/fzn/9.jpg": "<fzn>"
+    }
+}

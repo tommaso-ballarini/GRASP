@@ -1,565 +1,223 @@
-"""
-R2P-GEN Image Generator using SDXL + IP-Adapter.
-
-This module handles image generation with identity preservation using
-IP-Adapter with layer-wise scaling to prevent background contamination.
-
-Usage:
-    Standalone: python pipeline/generate.py
-    Import: from pipeline.generate import Generator
-"""
-
-import json
 import os
-import sys
+import json
 import torch
 import gc
+import time
 from PIL import Image
 from tqdm import tqdm
 
+# Import AutoPipelines to safely handle T2I and I2I
+from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
-# ============================================================================
-# PATH CONFIGURATION
-# ============================================================================
-# We're in pipeline/, config.py and other modules are at project root
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)  # Go up from pipeline/ to root
-
-# Add project root to sys.path BEFORE importing from it
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-# Now we can safely import from project root
 from config import Config
-from diffusers import StableDiffusionXLPipeline
-
-
-# ============================================================================
-# GENERATOR CLASS
-# ============================================================================
+from pipeline.prompts.flux_prompts import build_flux_prompt
 
 class Generator:
-    """
-    SDXL + IP-Adapter image generator following R2P workflow.
-    
-    This class processes a database of fingerprints and generates images
-    for each concept using IP-Adapter with configurable scaling strategies.
-    
-    Attributes:
-        database_path (str): Path to the fingerprint database JSON
-        output_dir (str): Directory to save generated images
-        device (str): Compute device ('cuda' or 'cpu')
-        use_layerwise_scaling (bool): If True, use layer-wise IP-Adapter scaling
-        
-    Example:
-        # Standalone usage
-        generator = Generator(
-            database_path="database/database_perva_train_1_clip.json",
-            output_dir="output/generated_images"
-        )
-        stats = generator.generate_all()
-        
-        # Import usage in full_loop.py
-        from pipeline.generate import Generator
-        generator = Generator(database_path=db_path, output_dir=out_dir)
-        generator.generate_all()
-    """
-    
-    def __init__(
-        self,
-        database_path,
-        output_dir,
-        device=None,
-        use_layerwise_scaling=None,
-        ip_adapter_scale_global=None,
-        ip_adapter_layer_weights=None,
-        num_inference_steps=None,
-        guidance_scale=None,
-        negative_prompt=None,
-        reference_image_size=None,
-        output_image_size=None,
-        sdxl_model=None,
-        ip_adapter_repo=None,
-        ip_adapter_subfolder=None,
-        ip_adapter_weight_name=None
-    ):
-        """
-        Initialize the Generator with configuration parameters.
-        
-        All parameters default to values from Config if not specified,
-        allowing flexible override for experiments.
-        
-        Args:
-            database_path: Path to the fingerprint database JSON (required)
-            output_dir: Directory to save generated images (required)
-            device: Compute device ('cuda' or 'cpu')
-            use_layerwise_scaling: If True, use layer-wise IP-Adapter scaling
-            ip_adapter_scale_global: Global IP-Adapter scale (if not layer-wise)
-            ip_adapter_layer_weights: Dict of layer-wise weights
-            num_inference_steps: Number of diffusion steps
-            guidance_scale: Classifier-free guidance scale
-            negative_prompt: Negative prompt for generation
-            reference_image_size: Size to resize reference images
-            output_image_size: Size of generated images
-            sdxl_model: SDXL model identifier
-            ip_adapter_repo: IP-Adapter repository
-            ip_adapter_subfolder: IP-Adapter subfolder in repo
-            ip_adapter_weight_name: IP-Adapter weight filename
-        """
-        # Required parameters
+    def __init__(self, database_path: str, output_dir: str, device: str = "cuda:0",
+                 num_shards: int = 1, shard_index: int = 0,
+                 use_naive_prompt: bool = False, no_image_cond: bool = False):
+        """Initialize the generator with ablation parameters."""
+        self.num_shards = num_shards
+        self.shard_index = shard_index
         self.database_path = database_path
         self.output_dir = output_dir
+        self.device = device
         
-        # Optional parameters with Config defaults
-        self.device = device or Config.DEVICE
-        self.use_layerwise_scaling = use_layerwise_scaling if use_layerwise_scaling is not None else Config.USE_LAYERWISE_SCALING
-        self.ip_adapter_scale_global = ip_adapter_scale_global or Config.IP_ADAPTER_SCALE_GLOBAL
-        self.ip_adapter_layer_weights = ip_adapter_layer_weights or Config.IP_ADAPTER_LAYER_WEIGHTS
-        self.num_inference_steps = num_inference_steps or Config.NUM_INFERENCE_STEPS
-        self.guidance_scale = guidance_scale or Config.GUIDANCE_SCALE
-        self.negative_prompt = negative_prompt or Config.NEGATIVE_PROMPT
-        self.reference_image_size = reference_image_size or Config.REFERENCE_IMAGE_SIZE
-        self.output_image_size = output_image_size or Config.OUTPUT_IMAGE_SIZE
-        self.sdxl_model = sdxl_model or Config.SDXL_MODEL
-        self.ip_adapter_repo = ip_adapter_repo or Config.IP_ADAPTER_REPO
-        self.ip_adapter_subfolder = ip_adapter_subfolder or Config.IP_ADAPTER_SUBFOLDER
-        self.ip_adapter_weight_name = ip_adapter_weight_name or Config.IP_ADAPTER_WEIGHT_NAME
+        # Ablation flags
+        self.use_naive_prompt = use_naive_prompt
+        self.no_image_cond = no_image_cond
         
-        # Will be initialized during generate_all()
         self.pipe = None
-        self.database = None
-        self.concept_dict = None
+        self._load_pipeline()
         
-        # Statistics
-        self.stats = {
-            "total_concepts": 0,
-            "successful": 0,
-            "skipped": 0,
-            "failed": 0
-        }
-    
-    def _load_database(self):
-        """
-        Load the fingerprint database from JSON file.
+    def _load_pipeline(self):
+        """Load FLUX (T2I or I2I depending on the ablation)."""
+        print(f"\n🚀 Initialize FLUX...")
+        model_name_or_path = getattr(Config.Models, "FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
         
-        Returns:
-            bool: True if database loaded successfully, False otherwise
-        """
-        print(f"📂 Loading database from {self.database_path}...")
-        
-        if not os.path.exists(self.database_path):
-            print(f"❌ Database not found at: {self.database_path}")
-            print("   Run build_database.py first to create the fingerprint database.")
-            return False
-        
-        with open(self.database_path, 'r', encoding='utf-8') as f:
-            self.database = json.load(f)
-        
-        self.concept_dict = self.database.get("concept_dict", {})
-        
-        if not self.concept_dict:
-            print("❌ Concept dictionary is empty.")
-            return False
-        
-        self.stats["total_concepts"] = len(self.concept_dict)
-        print(f"✅ Found {self.stats['total_concepts']} concepts.")
-        return True
-    
-    def _initialize_pipeline(self):
-        """
-        Load and configure SDXL + IP-Adapter pipeline.
-        
-        Returns:
-            bool: True if pipeline initialized successfully, False otherwise
-        """
-        print(f"🔌 Loading SDXL with IP-Adapter...")
-        
-        # Log scaling strategy
-        if self.use_layerwise_scaling:
-            print(f"   🎨 Strategy: Layer-Wise Scaling (R2P Optimized)")
-            print(f"      → Down Blocks: 0.0-0.7 (zero background, shape preservation)")
-            print(f"      → Mid Block: 0.9 (very high semantic identity)")
-            print(f"      → Up Blocks: 0.6-0.95 (maximum texture/material fidelity)")
+        # Select the pipeline based on the ablation
+        if self.no_image_cond:
+            print("   ℹ️ Text-Only mode (no image conditioning) activated.")
+            pipe_class = AutoPipelineForText2Image
         else:
-            print(f"   🎨 Strategy: Global Scale {self.ip_adapter_scale_global}")
-        
-        try:
-            # Load SDXL pipeline
-            self.pipe = StableDiffusionXLPipeline.from_pretrained(
-                self.sdxl_model,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16"
-            )
-            
-            # Load IP-Adapter
-            self.pipe.load_ip_adapter(
-                self.ip_adapter_repo,
-                subfolder=self.ip_adapter_subfolder,
-                weight_name=self.ip_adapter_weight_name
-            )
-            
-            # Apply scaling strategy
-            if self.use_layerwise_scaling:
-                self.pipe.set_ip_adapter_scale(self.ip_adapter_layer_weights)
-                print("   ✅ Layer-wise weights applied successfully")
-            else:
-                self.pipe.set_ip_adapter_scale(self.ip_adapter_scale_global)
-                print(f"   ✅ Global scale {self.ip_adapter_scale_global} applied")
-            
-            # Memory optimizations
-            print("   -> Enabling Model CPU Offload (Fix for Bus Error)...")
-            self.pipe.enable_model_cpu_offload()
-            self.pipe.enable_vae_slicing()
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            return False
-    
-    def _generate_single(self, concept_id, content):
-        """
-        Generate image for a single concept.
-        
-        Args:
-            concept_id: Unique identifier for the concept
-            content: Dict containing name, info, image paths
-            
-        Returns:
-            str or None: Path to saved image, or None if failed
-        """
-        name = content.get('name', 'unknown')
-        info = content.get('info', {})
-        prompt = info.get('sdxl_prompt', '')
-        
-        # Get reference image path
-        img_list = content.get('image', [])
-        if not img_list:
-            self.stats["skipped"] += 1
-            return None
-        
-        ref_img_path = img_list[0]
-        
-        # Validate inputs
-        if not os.path.exists(ref_img_path):
-            print(f"⚠️ Skipping {name}: Reference image not found.")
-            self.stats["skipped"] += 1
-            return None
-        
-        if not prompt:
-            print(f"⚠️ Skipping {name}: No prompt found.")
-            self.stats["skipped"] += 1
-            return None
-        
-        # Load and resize reference image
-        try:
-            ref_image = Image.open(ref_img_path).convert("RGB")
-            ref_image = ref_image.resize((self.reference_image_size, self.reference_image_size))
-        except Exception as e:
-            print(f"Error loading image {ref_img_path}: {e}")
-            self.stats["failed"] += 1
-            return None
-        
-        print(f"\n🔹 Generating: {name}")
-        print(f"   Prompt: {prompt[:100]}...")
-        
-        # Generate image
-        try:
-            with torch.inference_mode():
-                generated_image = self.pipe(
-                    prompt=prompt,
-                    negative_prompt=self.negative_prompt,
-                    ip_adapter_image=ref_image,
-                    height=self.output_image_size,
-                    width=self.output_image_size,
-                    num_inference_steps=self.num_inference_steps,
-                    guidance_scale=self.guidance_scale
-                ).images[0]
-            
-            # Save image
-            method_suffix = "layerwise" if self.use_layerwise_scaling else "global"
-            save_path = os.path.join(self.output_dir, f"{name}_ipa_{method_suffix}.png")
-            generated_image.save(save_path)
-            print(f"   💾 Saved to: {save_path}")
-            
-            self.stats["successful"] += 1
-            
-            # Cleanup after each generation
-            torch.cuda.empty_cache()
-            
-            return save_path
-            
-        except Exception as e:
-            print(f"❌ Error generating {name}: {e}")
-            self.stats["failed"] += 1
-            torch.cuda.empty_cache()
-            return None
-    
+            print("   ℹ️ Image-to-Image mode activated.")
+            pipe_class = AutoPipelineForImage2Image
+
+        self.pipe = pipe_class.from_pretrained(
+            model_name_or_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            attn_implementation="flash_attention_2" 
+        )
+        self.pipe.to(self.device)   
+        print("✅ FLUX loaded successfully.")
+
     def generate_all(self):
-        """
-        Generate images for ALL concepts in the database.
+        num_shards = self.num_shards
+        shard_index = self.shard_index
+        with open(self.database_path, 'r', encoding='utf-8') as f:
+            database = json.load(f)
+            
+        concept_dict = database.get("concept_dict", {})
         
-        This is the main entry point for batch generation.
+        all_keys = sorted(list(concept_dict.keys()))
+        chunk_size = len(all_keys) // num_shards
+        start_idx = shard_index * chunk_size
+        end_idx = start_idx + chunk_size if shard_index < num_shards - 1 else len(all_keys)
+        my_keys = all_keys[start_idx:end_idx]
         
-        Returns:
-            dict: Statistics containing:
-                - total_concepts: Number of concepts in database
-                - successful: Number of successfully generated images
-                - skipped: Number of skipped concepts (missing data)
-                - failed: Number of failed generations
-                - output_dir: Path to output directory
-        """
-        # Preventive memory cleanup
-        torch.cuda.empty_cache()
-        gc.collect()
+        print(f"🖥️  Worker {shard_index}/{num_shards} - Assigned {len(my_keys)} concepts out of {len(all_keys)} total.")
+        stats = {"total": len(my_keys), "success": 0, "failed": 0}
         
-        # Load database
-        if not self._load_database():
-            return self.stats
+        prompts_log = {}
+        target_context = Config.get_background_template()
         
-        # Initialize pipeline
-        if not self._initialize_pipeline():
-            return self.stats
+        t_start = time.time()
+        for i, concept_id in enumerate(tqdm(my_keys, desc="Generating", unit="img")):
+            content = concept_dict[concept_id]
+            t_concept = time.time()
+            print(f"\n🎨 [{i+1}/{len(my_keys)}] Elaboration concept: {concept_id}")
+            try:
+                # 1. Retrieve the source (representative) image
+                source_image_path = content.get("representative_image")
+                if not source_image_path:
+                    # Fallback: use the first image in the "image" list
+                    images = content.get("image", [])
+                    if images:
+                        source_image_path = images[0]
+                    else:
+                        print(f"   ⚠️ No source image found for {concept_id}.")
+                        continue
+                # Make the path absolute for safety
+                source_image_path = os.path.abspath(source_image_path)
+                
+
+                # 3. Build the FLUX prompt (naive prompt vs fingerprints)
+                if self.use_naive_prompt:
+                    category = content.get("category", "object")
+                    flux_prompt = f"A high-quality photograph of a {category}. The {category} is {target_context}."
+                    print(f"   📝 NAIVE Prompt: {flux_prompt[:100]}...")
+                else:
+                    # Extract 'info' from the JSON before passing it to the prompt builder
+                    attributes = content.get("info", {})
+                    flux_prompt = build_flux_prompt(attributes, target_context)
+                    print(f"   📝 FULL Prompt: {flux_prompt[:100]}...")
+                
+                # ---------------------------------------------------------
+                # Seed fix: dynamic for Text-to-Image (A, B), static for Img2Img (C-F)
+                # ---------------------------------------------------------
+                if self.no_image_cond:
+                    # Ablations A and B (Text-Only): use a dynamic seed based on the concept name
+                    current_seed = Config.Generate.SEED + (abs(hash(concept_id)) % 10000)
+                else:
+                    # Ablations C, D, E, F (Img2Img): use the global static seed
+                    current_seed = Config.Generate.SEED
+                
+                # Single generator setup for reproducibility
+                generator = torch.Generator(device=self.device).manual_seed(current_seed)
+
+                # # 3. Costruzione del prompt FLUX (Ablazione Naive vs Fingerprints)
+                # if self.use_naive_prompt:
+                #     category = content.get("category", "object")
+                #     flux_prompt = f"A high-quality photograph of a {category}. The {category} is {target_context}."
+                #     print(f"   📝 NAIVE Prompt: {flux_prompt[:100]}...")
+                #     # Fix per immagini identiche: rendiamo il seed dinamico basandoci sull'hash del concept_id
+                #     current_seed = Config.Generate.SEED + abs(hash(concept_id)) % 10000
+                # else:
+                #     # FIX NameError: estraiamo 'info' dal JSON prima di passarlo al prompt builder
+                #     attributes = content.get("info", {})
+                #     flux_prompt = build_flux_prompt(attributes, target_context)
+                #     print(f"   📝 FULL Prompt: {flux_prompt[:100]}...")
+                #     # Usa il seed standard riproducibile
+                #     current_seed = Config.Generate.SEED
+                
+                # # Setup generatore con il seed corretto
+                # generator = torch.Generator(device=self.device).manual_seed(current_seed)
+                
+                
+                # 4 & 5. Generation with FLUX (Ablation Text-Only vs Img2Img)
+                with torch.inference_mode():
+                    if self.no_image_cond:
+                        # Conditions A, B: no image input
+                        output_img = self.pipe(
+                            prompt=flux_prompt,
+                            num_inference_steps=4,
+                            generator=generator
+                        ).images[0]
+                    else:
+                        # Conditions C, D, E, F: use the image
+                        seed_img = Image.open(source_image_path).convert("RGB")
+                        target_size = Config.Images.REFERENCE_IMAGE_SIZE
+                        seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+                        
+                        output_img = self.pipe(
+                            prompt=flux_prompt,
+                            image=seed_img,
+                            num_inference_steps=4,
+                            generator=generator
+                        ).images[0]
+
+                # # 2. Recupero degli attributi (Fingerprints)
+                # attributes = content.get("info", {})
+                
+                # # 3. Costruzione del prompt FLUX
+                # flux_prompt = build_flux_prompt(attributes, target_context)
+                # print(f"   📝 Prompt: {flux_prompt[:100]}...")
+                
+                # # 4. Caricamento e standardizzazione immagine
+                # seed_img = Image.open(source_image_path).convert("RGB")
+                # target_size = Config.Images.REFERENCE_IMAGE_SIZE
+                # seed_img = seed_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+                
+                # generator = torch.Generator(device=self.device).manual_seed(Config.Generate.SEED)
+                
+                # # 5. Generazione con FLUX Img2Img
+                # with torch.inference_mode():
+                #     output_img = self.pipe(
+                #         prompt=flux_prompt,
+                #         image=seed_img,
+                #         num_inference_steps=4,
+                #         generator=generator
+                #     ).images[0]
+                
+                # 6. Save Output
+                out_path = os.path.join(self.output_dir, f"{concept_id}_generated.png")
+                out_path = os.path.abspath(out_path)
+                output_img.save(out_path)
+                
+                prompts_log[concept_id] = {
+                    "flux_prompt": flux_prompt,
+                    "source_image": source_image_path,
+                    "output_image": out_path,
+                }
+                
+                elapsed = time.time() - t_concept
+                total_elapsed = time.time() - t_start
+                avg = total_elapsed / (i + 1)
+                remaining = avg * (len(my_keys) - i - 1)
+                stats["success"] += 1
+                print(f"   ✅ Saved: {os.path.basename(out_path)} "
+                    f"| {elapsed:.1f}s | avg {avg:.1f}s/img | ETA {remaining/60:.1f}min")
+            except Exception as e:
+                print(f"   ❌ Error {concept_id}: {str(e)}")
+                stats["failed"] += 1
         
-        # Create output directory
-        os.makedirs(self.output_dir, exist_ok=True)
+        # Save the log
+        prompts_path = os.path.join(self.output_dir, "prompts.json")
+        with open(prompts_path, "w", encoding="utf-8") as f:
+            json.dump(prompts_log, f, indent=4, ensure_ascii=False)
+        print(f"   📝 Prompt log saved → {prompts_path}")
         
-        # Generate all images
-        print(f"\n🎨 Starting Generation with IP-Adapter...")
-        
-        for concept_id, content in tqdm(self.concept_dict.items()):
-            self._generate_single(concept_id, content)
-        
-        # Final report
-        print(f"\n{'='*60}")
-        print("📊 GENERATION COMPLETE")
-        print(f"{'='*60}")
-        print(f"   Total concepts: {self.stats['total_concepts']}")
-        print(f"   ✅ Successful: {self.stats['successful']}")
-        print(f"   ⚠️  Skipped: {self.stats['skipped']}")
-        print(f"   ❌ Failed: {self.stats['failed']}")
-        print(f"   📁 Output: {self.output_dir}")
-        print(f"{'='*60}")
-        
-        self.stats["output_dir"] = self.output_dir
-        return self.stats
-    
+        total = time.time() - t_start
+        print(f"\n⏱️  Total time: {total/60:.1f}min | "
+            f"avg {total/max(stats['success'],1):.1f}s/img")
+        return stats
+
     def cleanup(self):
-        """Release GPU memory and cleanup resources."""
+        """Release memory."""
+        print("\n🧹 Cleanup VRAM from FLUX...")
         if self.pipe is not None:
             del self.pipe
             self.pipe = None
-        torch.cuda.empty_cache()
         gc.collect()
-
-
-# ============================================================================
-# STANDALONE FUNCTION FOR REFINEMENT LOOP
-# ============================================================================
-
-# Global pipeline cache for refinement loop efficiency
-_cached_pipe = None
-_cached_config = None
-
-def generate_image(
-    reference_image_path: str,
-    fingerprints: dict,
-    output_path: str,
-    negative_prompt: str = None,
-    iteration: int = 1,
-    sdxl_prompt: str = None
-):
-    """
-    Generate a single image using SDXL + IP-Adapter.
-    
-    This standalone function is designed for use in the refinement loop.
-    It caches the pipeline between calls for efficiency.
-    
-    Args:
-        reference_image_path: Path to the reference image
-        fingerprints: Dictionary containing extracted attributes
-        output_path: Path to save the generated image
-        negative_prompt: Negative prompt (overrides Config default)
-        iteration: Current iteration number (for logging)
-        sdxl_prompt: Explicit SDXL prompt (if None, uses fingerprints['description'] or 'sdxl_prompt')
-        
-    Returns:
-        str: Path to the generated image, or None on failure
-    """
-    global _cached_pipe, _cached_config
-    
-    print(f"   🎨 Generating image (iteration {iteration})...")
-    
-    # Determine prompt
-    if sdxl_prompt is None:
-        sdxl_prompt = fingerprints.get("sdxl_prompt") or fingerprints.get("description", "A product photo")
-    
-    # Determine negative prompt
-    if negative_prompt is None:
-        negative_prompt = Config.NEGATIVE_PROMPT
-    
-    # Check if we need to load/reload the pipeline
-    current_config = (Config.SDXL_MODEL, Config.IP_ADAPTER_REPO, Config.USE_LAYERWISE_SCALING)
-    
-    if _cached_pipe is None or _cached_config != current_config:
-        print(f"   🔌 Loading SDXL + IP-Adapter pipeline...")
-        
-        # Cleanup old pipeline if exists
-        if _cached_pipe is not None:
-            del _cached_pipe
-            torch.cuda.empty_cache()
-            gc.collect()
-        
-        try:
-            from diffusers import StableDiffusionXLPipeline
-            
-            # Load base SDXL
-            _cached_pipe = StableDiffusionXLPipeline.from_pretrained(
-                Config.SDXL_MODEL,
-                torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32,
-                use_safetensors=True,
-                variant="fp16" if Config.USE_FP16 else None
-            ).to(Config.DEVICE)
-            
-            # Load IP-Adapter
-            _cached_pipe.load_ip_adapter(
-                Config.IP_ADAPTER_REPO,
-                subfolder=Config.IP_ADAPTER_SUBFOLDER,
-                weight_name=Config.IP_ADAPTER_WEIGHT_NAME
-            )
-            
-            # Set IP-Adapter scale
-            if Config.USE_LAYERWISE_SCALING and Config.IP_ADAPTER_LAYER_WEIGHTS:
-                _cached_pipe.set_ip_adapter_scale(Config.IP_ADAPTER_LAYER_WEIGHTS)
-            else:
-                _cached_pipe.set_ip_adapter_scale(Config.IP_ADAPTER_SCALE_GLOBAL)
-            
-            _cached_config = current_config
-            print(f"   ✓ Pipeline loaded")
-            
-        except Exception as e:
-            print(f"   ❌ Failed to load pipeline: {e}")
-            _cached_pipe = None
-            return None
-    
-    # Load and process reference image
-    try:
-        from PIL import Image
-        
-        ref_image = Image.open(reference_image_path).convert("RGB")
-        
-        # Resize if needed
-        if Config.REFERENCE_IMAGE_SIZE:
-            ref_image = ref_image.resize(
-                (Config.REFERENCE_IMAGE_SIZE, Config.REFERENCE_IMAGE_SIZE),
-                Image.Resampling.LANCZOS
-            )
-        
-        # Generate
-        result = _cached_pipe(
-            prompt=sdxl_prompt,
-            negative_prompt=negative_prompt,
-            ip_adapter_image=ref_image,
-            num_inference_steps=Config.NUM_INFERENCE_STEPS,
-            guidance_scale=Config.GUIDANCE_SCALE,
-            height=Config.OUTPUT_IMAGE_SIZE,
-            width=Config.OUTPUT_IMAGE_SIZE
-        )
-        
-        # Save
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        
-        result.images[0].save(output_path)
-        print(f"   ✓ Saved: {os.path.basename(output_path)}")
-        
-        return output_path
-        
-    except Exception as e:
-        print(f"   ❌ Generation error: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def cleanup_generator_cache():
-    """Release the cached pipeline to free GPU memory."""
-    global _cached_pipe, _cached_config
-    
-    if _cached_pipe is not None:
-        del _cached_pipe
-        _cached_pipe = None
-        _cached_config = None
         torch.cuda.empty_cache()
-        gc.collect()
-        print("   🧹 Generator cache cleared")
-
-
-# ============================================================================
-# STANDALONE EXECUTION
-# ============================================================================
-
-def main():
-    """
-    Standalone entry point for image generation.
-    
-    Creates a Generator instance with default configuration and
-    generates images for all concepts in the database.
-    
-    This function:
-    1. Changes working directory to project root (for consistent paths)
-    2. Uses default database and output paths at project root
-    3. Runs full generation pipeline
-    
-    Returns:
-        dict: Generation statistics
-    """
-    # Change to project root for consistent relative paths
-    # This ensures all relative paths work correctly when running standalone
-    os.chdir(PROJECT_ROOT)
-    print(f"📂 Working directory: {os.getcwd()}")
-    
-    # Default paths relative to project root
-    default_database = os.path.join(PROJECT_ROOT, "database", "database_perva_train_1_clip.json")
-    default_output = os.path.join(PROJECT_ROOT, "output", "generated_images")
-    
-    # Check if database exists
-    if not os.path.exists(default_database):
-        print(f"❌ Database not found: {default_database}")
-        print("\n   Available databases:")
-        db_dir = os.path.join(PROJECT_ROOT, "database")
-        if os.path.exists(db_dir):
-            for f in os.listdir(db_dir):
-                if f.endswith('.json'):
-                    print(f"      - {f}")
-        else:
-            print("      (database/ folder does not exist)")
-        print("\n   Run build_database.py first to create a database.")
-        return {"error": "Database not found"}
-    
-    print(f"\n{'='*70}")
-    print("GENERATOR - Standalone Execution")
-    print(f"{'='*70}")
-    print(f"  Database: {default_database}")
-    print(f"  Output:   {default_output}")
-    print(f"{'='*70}\n")
-    
-    # Create and run generator
-    generator = Generator(
-        database_path=default_database,
-        output_dir=default_output
-    )
-    
-    try:
-        stats = generator.generate_all()
-    finally:
-        generator.cleanup()
-    
-    return stats
-
-
-if __name__ == "__main__":
-    main()

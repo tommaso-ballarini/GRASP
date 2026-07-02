@@ -1,0 +1,118 @@
+def stage_recovery(
+    database_path: str,
+    rejected_path: str,
+    output_dir: str,
+) -> None:
+    """Fase 3: Recovery tramite API (closed-loop ospedaliero)."""
+    print(f"\n{'='*70}\n🚑 STAGE: RECOVERY API\n{'='*70}")
+
+    if not os.path.exists(rejected_path):
+        print("   ✅ Nessun file rejected trovato. Niente da recuperare!")
+        return
+
+    with open(rejected_path, "r", encoding="utf-8") as f:
+        rejected_dict = json.load(f)
+
+    if not rejected_dict:
+        print("   ✅ Lista rejected vuota. Niente da recuperare!")
+        return
+
+    with open(database_path, "r", encoding="utf-8") as f:
+        database = json.load(f)
+    concept_dict = database.get("concept_dict", {})
+
+    print(f"   Trovati {len(rejected_dict)} concetti da curare.")
+
+    # Config API — centralizzati qui, spostare in Config se necessario
+    VLM_URL        = getattr(Config.Models, "RECOVERY_VLM_URL",  "http://localhost:8000/v1")
+    VLM_MODEL_NAME = getattr(Config.Models, "RECOVERY_VLM_NAME", Config.Models.VLM_MODEL)
+    FLUX_URL       = getattr(Config.Models, "RECOVERY_FLUX_URL", "http://localhost:8766")
+    MAX_ATTEMPTS   = Config.Refine.MAX_ITERATIONS
+
+    try:
+        vlm_client = openai.OpenAI(api_key="EMPTY", base_url=VLM_URL)
+    except Exception as e:
+        print(f"   ❌ Errore inizializzazione client VLM: {e}")
+        return
+
+    print("   Caricamento modelli di verifica per il loop di recovery...")
+    reasoner = _build_reasoner()
+    clip_calculator = ClipScoreCalculator(device="cuda")
+
+    recovered_count = 0
+    graveyard_count = 0
+
+    for concept_id, fail_data in rejected_dict.items():
+        print(f"\n   🚑 Paziente: {concept_id} | "
+              f"Problema: {fail_data.get('missing_details', ['Unknown'])}")
+
+        content = concept_dict.get(concept_id, {})
+
+        source_image_path = _get_first_image(content)
+        if source_image_path is None:
+            print(f"      ⚠️  Nessuna immagine sorgente per {concept_id} → graveyard.")
+            graveyard_count += 1
+            continue
+
+        fingerprints    = content.get("info", {})
+        target_context  = Config.get_background_template()
+        current_prompt  = build_flux_prompt(fingerprints, target_context)
+        missing_details = fail_data.get("missing_details", [])
+        gen_image_path  = os.path.join(output_dir, f"{concept_id}_generated.png")
+        is_fixed        = False
+
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            print(f"      🔄 Tentativo {attempt}/{MAX_ATTEMPTS}...")
+
+            # 1. Prescrizione
+            new_prompt = vlm_rewrite_prompt(
+                vlm_client=vlm_client,
+                model_name=VLM_MODEL_NAME,
+                original_prompt=current_prompt,
+                missing_details=missing_details,
+                attempt=attempt,
+            )
+            print(f"         📝 Prompt: {new_prompt[:80]}...")
+
+            # 2. Terapia
+            new_seed = Config.Generate.SEED + attempt
+            success = generate_recovery_http(
+                flux_url=FLUX_URL,
+                source_image_path=source_image_path,
+                prompt=new_prompt,
+                seed=new_seed,
+                output_path=gen_image_path,
+            )
+
+            if not success:
+                print("         ⚠️ Rigenerazione API fallita, prossimo tentativo.")
+                continue
+
+            # 3. Visita di controllo
+            verification = verify_generation_r2p(
+                reasoner=reasoner,
+                clip_calculator=clip_calculator,
+                gen_image_path=gen_image_path,
+                ref_image_path=source_image_path,
+                fingerprints=fingerprints,
+            )
+
+            if verification["is_verified"]:
+                print(f"         ✅ GUARITO al tentativo {attempt}.")
+                is_fixed = True
+                recovered_count += 1
+                break
+            else:
+                missing_details = verification.get("failed_attributes", missing_details)
+                current_prompt  = new_prompt
+                print(f"         ❌ Permangono problemi: {missing_details}")
+
+        if not is_fixed:
+            print(f"      💀 UNRECOVERABLE: {concept_id} → graveyard.")
+            graveyard_count += 1
+
+    print(f"\n📊 Recovery: {recovered_count} salvati | {graveyard_count} graveyard")
+
+    del reasoner
+    del clip_calculator
+    cleanup_gpu()

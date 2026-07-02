@@ -10,10 +10,10 @@ from pathlib import Path
 
 def cleanup_gpu():
     """Aggressively free GPU memory."""
+    gc.collect()                          
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-    gc.collect()
+        torch.cuda.empty_cache()       
+        torch.cuda.synchronize()          
 
 def print_memory_stats(label=""):
     """Print GPU memory statistics."""

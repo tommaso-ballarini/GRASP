@@ -1,21 +1,5 @@
-# pipeline/prompts/__init__.py
-"""
-SDXL Prompt Templates for R2P-GEN Pipeline.
-
-This module contains various prompt engineering strategies for 
-generating SDXL-compatible prompts from object fingerprints.
-"""
-
-from .sdxl_prompts import (
-    SYSTEM_PROMPT_SIMPLE,
-    SYSTEM_PROMPT_GEMINI,
-    SYSTEM_PROMPT_OPTIMIZED,
-    HARDCODED_STYLE
-)
+from .flux_prompts import build_flux_prompt
 
 __all__ = [
-    'SYSTEM_PROMPT_SIMPLE',
-    'SYSTEM_PROMPT_GEMINI', 
-    'SYSTEM_PROMPT_OPTIMIZED',
-    'HARDCODED_STYLE'
+    'build_flux_prompt',
 ]
