@@ -1,4 +1,4 @@
-# R2P-GEN: Retrieval and Reasoning for Personalization — Generative Edition
+# GRASP - Generative Reasoning for Attribute-Specific Personalization
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
@@ -12,27 +12,26 @@
 
 ## Abstract
 
-**R2P-GEN** is a zero-shot, tuning-free framework for subject-driven Text-to-Image personalization. Existing adapter-based methods (e.g., IP-Adapter) suffer from background entanglement and prompt override, while parameter-update approaches (e.g., DreamBooth, LoRA) impose prohibitive computational costs at inference time. Our method addresses both limitations by coupling the native generative power of **FLUX.2**, leveraging its T5 text encoder for dense semantic binding, with the visual reasoning capabilities of **Vision Language Models (VLMs)**. Subject identity is encoded entirely through structured textual fingerprints, eliminating any need for adapter modules or weight fine-tuning. A closed-loop, VLM-guided refinement stage automatically recovers missing visual attributes through escalating prompt revision, and an isolated independent judge provides unbiased final evaluation.
+**GRASP** is a zero-shot, tuning-free framework for subject-driven Text-to-Image personalization. Existing adapter-based methods (e.g., IP-Adapter) suffer from background entanglement and prompt override, while parameter-update approaches (e.g., DreamBooth, LoRA) impose prohibitive computational costs at inference time. Our method addresses both limitations by coupling the native generative power of **FLUX.2**, leveraging its T5 text encoder for dense semantic binding, with the visual reasoning capabilities of **Vision Language Models (VLMs)**. Subject identity is encoded entirely through structured textual fingerprints, eliminating any need for adapter modules or weight fine-tuning. A closed-loop, VLM-guided refinement stage automatically recovers missing visual attributes through escalating prompt revision, and an independent judge model provides the final evaluation.
 
 ---
 
 ## Key Features
 
-- **Zero-Shot & Tuning-Free:** No adapter weights, no LoRA, no per-subject fine-tuning. The framework runs entirely at inference time.
-- **T5-Driven Dense Textual Anchoring:** Visual identity is encoded as structured natural language, exploiting the superior semantic binding capacity of the T5 encoder in FLUX.2.
-- **VLM Visual Fingerprinting:** Qwen3-VL extracts distinctive attributes (logos, textures, typographic elements) from reference images into a structured JSON database.
-- **Hierarchical Attribute Verification:** A two-phase verification module detects missing attributes with continuous probability scores.
-- **Closed-Loop Refinement:** An automated recovery loop rewrites the generation prompt with increasing intensity (semantic emphasis → hard typographic anchors) and regenerates up to three times.
-- **Independent Final Judge:** A fully isolated VLM (InternVL3.5) evaluates final outputs with Visual Question Answering (VQA), preventing self-evaluation bias.
+- **Zero-shot, tuning-free**: no adapter weights, no LoRA, no per-subject fine-tuning — the framework runs entirely at inference time.
+- **Explicit visual fingerprinting**: Qwen3-VL extracts atomic, human-readable attributes (shape, material, color, pattern, logos, legible text) into a structured JSON database, instead of an opaque embedding.
+- **Native FLUX.2 conditioning**: fingerprints are translated into a dense textual anchor and combined with Image-to-Image conditioning, without external adapter modules.
+- **Closed-loop verification and refinement**: a Gatekeeper module (CLIP + Qwen3-VL) checks each attribute individually and triggers escalating prompt revisions when attributes are missing, up to 3 recovery attempts.
+- **Independent judge**: final outputs are scored by InternVL3.5, decoupled from the Qwen3-VL Gatekeeper used during refinement, to avoid self-evaluation bias.
 
 ---
 
 ## Pipeline Architecture
 
-R2P-GEN is a five-stage modular pipeline orchestrated by `flux_loop.py`.
+GRASP is a five-stage modular pipeline orchestrated by `flux_loop.py`.
 
 <p align="center">
-  <img src="diagram_architecture.png" alt="R2P-GEN Architecture Diagram" width="100%">
+  <img src="diagram_architecture.png" alt="GRASP Architecture Diagram" width="100%">
 </p>
 
 ### Stage Details
@@ -44,7 +43,7 @@ R2P-GEN is a five-stage modular pipeline orchestrated by `flux_loop.py`.
 * **Stage 1. Generation (`pipeline/generate.py`):** The JSON fingerprints are translated into a dense Textual Anchor. This anchor and the reference image are passed to FLUX.2-klein-9B in Image-to-Image mode (4 inference steps) to generate the personalized subject without any external adapters.
 
 **3. REFINE LOOP AND JUDGE**
-* **Stage 2. Verify Base (`pipeline/verify.py`):** Hierarchical attribute verification. A CLIP quick-reject filters catastrophic failures, followed by a Qwen3-VL logit-based sweep to compute a continuous probability for each attribute. A *Worst-K Detection* policy flags missing features.
+* **Stage 2. Verify Base (`pipeline/verify.py`):** Hierarchical attribute verification. A CLIP quick-reject filters catastrophic failures, followed by a Qwen3-VL logit-based sweep to compute a continuous probability for each attribute. A *Worst-Case Detection* policy flags missing features.
 * **Stage 3. Refine (`pipeline/refine.py`):** Rejected images enter a closed recovery loop. Qwen3-VL acts as an automated Prompt Engineer, applying an *Escalating Prompt Revision* strategy (semantic emphasis → hard typographic anchors) and regenerates the image up to 3 times.
 * **Stage 4. Final Judge (`pipeline/judge`, `pipeline/metrics`):** To eliminate self-evaluation bias, InternVL3.5-8B evaluates the final outputs using CLIP-I (global identity similarity), CLIP-T (text-image alignment), DINO-I via DINOv2 (fine-grained structural fidelity), and a VQA-based TIFA Score (exact attribute verification).
 
@@ -53,32 +52,45 @@ R2P-GEN is a five-stage modular pipeline orchestrated by `flux_loop.py`.
 ## Repository Structure
 
 ```text
-R2P-GEN/
-├── flux_loop.py               # Main orchestrator for Stages 1-4
+GRASP/
+├── flux_loop.py               # Main orchestrator for pipeline stages
 ├── flux_server.py             # HTTP server to keep FLUX.2 resident in VRAM
 ├── config.py                  # Centralized configuration and model paths
+├── build_dashboard.py         # Useful dashboard for results' exploration
 ├── pipeline/                  # Core pipeline modules
-│   ├── build_database.py      # Stage 0 logic (fingerprinting)
-│   ├── generate.py            # Stage 1 logic (FLUX inference)
-│   ├── verify.py              # Stage 2 logic (CLIP/Qwen verification)
-│   ├── refine.py              # Stage 3 logic (Prompt rewriting)
-│   ├── judge.py               # Stage 4 logic (InternVL metrics)
-│   ├── prompts/               # Prompt templates (flux_prompts.py, etc.)
-│   ├── metrics.py             # Metric computation utilities
-│   └── r2p_tools.py           # Shared utilities
+│   ├── __init__.py
+│   ├── r2p_tools.py                # Shared utilities
+│   ├── build_database.py           # Fingerprinting — Text-driven reference selection strategy
+│   ├── build_database_db.py        # Fingerprinting — DreamBench, Centroid strategy
+│   ├── build_database_centroid.py  # Fingerprinting — PerVA, Centroid strategy 
+│   ├── generate.py                 # FLUX inference — PerVA
+│   ├── generate_dreambench.py      # FLUX inference — DreamBench
+│   ├── verify.py                   # CLIP/Qwen verification — PerVA
+│   ├── verify_dreambench.py        # CLIP/Qwen verification — DreamBench
+│   ├── refine.py                   # Prompt rewriting / recovery loop — PerVA
+│   ├── refine_dreambench.py        # Prompt rewriting / recovery loop — DreamBench
+│   ├── judge.py                    # Final judge (InternVL metrics)
+│   ├── evaluate_dreambench.py      # DreamBench evaluation entry point
+│   ├── metrics.py                  # Metric computation utilities — PerVA
+│   ├── metrics_dreambench.py       # Metric computation utilities — DreamBench
+│   ├── prompts/                    # Prompt templates (flux_prompts.py, etc.)
+│   └── utils2.py                   # Specific utilities
 ├── r2p_core/                  # Underlying model wrappers
 │   ├── evaluators/            # Confidence calculation logic
 │   ├── models/                # Qwen3-VL and InternVL interface logic
 │   └── utils/                 # Helpers
-├── scripts/                   # Slurm cluster scripts for large-scale runs
-│   ├── run_full_e2e.sh        # End-to-end pipeline run (All Stages)
-│   ├── run_dreambench.sh      # DreamBench specific execution
-│   └── run_ablation_*.sh      # Scripts for ablation studies
+├── runs/                      # Slurm cluster scripts for pipeline execution
+│   ├── pipeline_dreambench.sh        # Full end-to-end pipeline (build DB + generate + verify + refine)
+│   ├── run_ablation_A.sh             # Ablation A — Text Naive
+│   ├── run_ablation_B.sh             # Ablation B — Text + Fingerprints
+│   ├── run_ablation_C.sh             # Ablation C — Image + Text Naive
+│   ├── run_ablation_D.sh             # Ablation D — Image + Fingerprints
+│   ├── run_ablation_E.sh             # Ablation E — Full Pipeline (Centroid) — main configuration
+│   ├── run_ablation_F.sh             # Ablation F — Full Pipeline (Text-driven)
+│   └── run_evaluation_dreambench.sh  # DreamBench evaluation
 ├── database/                  # Output directory for JSON databases
 ├── output/                    # Output directory for generated images
-├── requeriments_cluster.txt   # Python depencecies for cluster dependencies
 └── requirements.txt           # Python dependencies
-
 ```
 
 ---
@@ -95,26 +107,20 @@ R2P-GEN/
 
 ```bash
 # Clone the repository
-git clone https://github.com/tommaso-ballarini/R2P-GEN.git
-cd R2P-GEN
+git clone https://github.com/tommaso-ballarini/GRASP.git
+cd GRASP
 
 # Create and activate a conda environment
-conda create -n r2pgen python=3.10 -y
-conda activate r2pgen
+conda create -n <name-env> python=3.10 -y
+conda activate <name-env>
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-For cluster environments with custom module paths, use the cluster-specific requirements:
-
-```bash
-pip install -r requirements_cluster.txt
-```
-
 ### Environment Variables
 
-R2P-GEN uses environment variables for flexible path configuration. Copy `.env.example` to `.env` and adjust as needed, or export them directly:
+GRASP uses environment variables for flexible path configuration. Copy `.env.example` to `.env` and adjust as needed, or export them directly:
 
 | Variable | Description | Default |
 |---|---|---|
@@ -130,150 +136,42 @@ When `R2P_MODELS_BASE` is not set, all models are downloaded automatically from 
 
 ## Dataset Preparation
 
-R2P-GEN supports two standard personalization benchmarks:
+GRASP supports two standard personalization benchmarks:
 
 - **DreamBench**, available at [dreambooth.github.io](https://dreambooth.github.io/)
 - **PerVA**, available at [deepayan137.github.io/papers/training-free-personalization](https://deepayan137.github.io/papers/training-free-personalization.html)
 
-Download and place datasets under `data/`. DreamBench can be prepared using the provided utility:
-
-```bash
-python prepare_dreambench.py
-```
+Download and place datasets under `data/`.
 
 ---
 
 ## Usage
 
-### Step 0: Set Environment Variables
+All pipeline runs are launched via Slurm through the scripts in `runs/`.
 
-Beyond the variables listed in the [Environment Variables](#environment-variables) table, the pipeline scripts rely on a few additional exports (see the `run_ablation_*.sh` / `pipeline_dreambench.sh` scripts under `scripts/` for full examples):
+### Ablation studies
 
-```bash
-export PYTHONPATH=$PWD
-export R2P_PERVA_DATA=/path/to/perva-data        # or dreambench data root
-export R2P_MODELS_BASE=/path/to/models_cache      # local HF weights cache
-export R2P_CLUSTER_MODE=true                      # enable cluster path layout
-export HF_HOME=/path/to/models_cache
-export R2P_FLUX_MODEL=/path/to/FLUX.2-klein-9B
-export HF_DATASETS_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
-export HF_HUB_OFFLINE=1
-export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-export RECOVERY_FLUX_URL="http://127.0.0.1:8766"  # must match the FLUX server port (Step 1)
-```
-Note: Wherever you see " /path/to/ ", please replace it with the actual path on your local system.
+Each script reproduces one configuration from Table 1 of the paper:
 
-### Step 1: Start the FLUX Server
-
-The FLUX model is kept resident in VRAM via a background HTTP server to avoid repeated loading across pipeline stages. It must be running before any stage that generates or refines images (`generate_only`, `refine`, `full_auto`).
-
-**Manual / interactive mode** : useful for local development or debugging:
-
-```bash
-python flux_server.py --port 8766
-```
-
-The server listens on `http://127.0.0.1:8766` by default. Keep this process running in a separate terminal or tmux session throughout the experiment, and make sure `RECOVERY_FLUX_URL` (Step 0) points at the same port.
-
-**Automatic mode (Slurm / cluster runs)** : the server is started in the background, health-checked, and torn down by the job script itself, so no manual step is needed. This is the pattern used in `scripts/run_ablation_E.sh`, `scripts/run_ablation_F.sh`, and `pipeline_dreambench.sh`:
-
-```bash
-CUDA_VISIBLE_DEVICES=1 python flux_server.py --port 8766 &
-FLUX_PID=$!
-
-# Poll /health until ready (adjust timeout as needed)
-for i in $(seq 1 36); do
-    if curl -s -f -o /dev/null "http://127.0.0.1:8766/health"; then
-        echo "✅ FLUX ready"
-        break
-    fi
-    sleep 5
-done
-
-# ... run generate_only / refine stages here ...
-
-kill $FLUX_PID   # shut the server down once generation/refine is complete
-```
-
-When using this mode, some scripts run FLUX on a dedicated GPU (e.g. `CUDA_VISIBLE_DEVICES=1`) so it doesn't contend with the VLM stages (Qwen3-VL / InternVL3.5) running on another GPU.
-
-### Step 2: Build the Fingerprint Database
-
-```bash
-python pipeline/build_database.py
-```
-
-This runs Stage 0: CLIP-based view selection followed by Qwen3-VL fingerprint extraction. Output is written to `database/database.json`.
-
-> For DreamBench-specific runs, use the dedicated variant instead: `python pipeline/build_database_db.py --data-dir "$R2P_PERVA_DATA" --split test` (see `pipeline_dreambench.sh`).
-
-### Step 3: Run the Pipeline
-
-All pipeline stages are invoked through `flux_loop.py` via the `--stage` argument.
-
-**Full automatic pipeline (recommended):**
-
-```bash
-python flux_loop.py \
-    --database database/database.json \
-    --output output/ \
-    --stage full_auto
-```
-
-**Individual stages:**
-
-```bash
-# Stage 1: Generate images from fingerprints
-python flux_loop.py --database database/database.json --output output/ --stage generate_only
-
-# Stage 2: Verify generated images
-python flux_loop.py --database database/database.json --output output/ --stage verify_base
-
-# Stage 3: Refine rejected images
-python flux_loop.py --database database/database.json --output output/ --stage refine
-
-# Stage 4: Run final independent evaluation
-python flux_loop.py --database database/database.json --output output/ --stage final_judge
-```
-
-**Distributed generation with sharding (for cluster use):**
-
-```bash
-# Run shard 0 of 4
-python flux_loop.py \
-    --database database/database.json \
-    --output output/ \
-    --stage generate_only \
-    --num-shards 4 \
-    --shard-index 0
-```
-
-### Ablation Studies
-
-Two flags expose key architectural components for controlled ablation:
-
-```bash
-# Ablation 1: Naive prompt baseline (no fingerprints, no dense anchoring)
-python flux_loop.py --database database/database.json --output output_naive/ \
-    --stage generate_only --naive-prompt
-
-# Ablation 2: Text-only generation (no image conditioning, T2I instead of I2I)
-python flux_loop.py --database database/database.json --output output_t2i/ \
-    --stage generate_only --no-image-cond
-```
-
-For end-to-end Slurm cluster runs, refer to the scripts in `runs/`:
-
-```bash
-sbatch runs/run_full_e2e.sh
-```
+| Script | Configuration |
+|---|---|
+| `run_ablation_A.sh` | Text Naive |
+| `run_ablation_B.sh` | Text + Fingerprints |
+| `run_ablation_C.sh` | Image + Text Naive |
+| `run_ablation_D.sh` | Image + Fingerprints |
+| `run_ablation_E.sh` | Full Pipeline (Centroid) — main configuration |
+| `run_ablation_F.sh` | Full Pipeline (Text-driven) |
 
 ---
+### Dreambench Comparison
+| Script | Configuration |
+|---|---|
+| `pipeline_dreambench.sh` | Full dreambench pipeline (similar to Run_E) |
+| `run_evaluation_dreambench.sh` | Evaluation |
 
-## Evaluation
-
-R2P-GEN uses a four-metric evaluation protocol computed by the **Final Judge** (InternVL3.5-8B), which operates independently from all prior pipeline stages to prevent self-evaluation bias.
+---
+### EVALUATION
+GRASP uses a four-metric evaluation protocol computed by the **Final Judge** (InternVL3.5-8B), which operates independently from all prior pipeline stages to prevent self-evaluation bias.
 
 | Metric | Model | Measures |
 |---|---|---|
@@ -282,11 +180,7 @@ R2P-GEN uses a four-metric evaluation protocol computed by the **Final Judge** (
 | **DINO-I** | DINOv2 ViT-L/14 | Fine-grained structural and semantic fidelity |
 | **TIFA Score** | InternVL3.5-8B (VQA) | Exact attribute verification via visual question answering |
 
-Results are written to `output/final_judge_results.json`. Aggregate score analysis can be performed with:
-
-```bash
-python analyze_judge_scores.py --results output/final_judge_results.json
-```
+Results are written to `output/final_judge_results.json`.
 
 ---
 
@@ -296,10 +190,8 @@ All hyperparameters and model paths are centralized in `config.py`. Key settings
 
 | Config class | Parameter | Default | Description |
 |---|---|---|---|
-| `Config.Generate` | `NUM_INFERENCE_STEPS` | `4` | FLUX denoising steps |
 | `Config.Generate` | `BACKGROUND_STYLE` | `wooden_table` | Background template for generation |
 | `Config.Refine` | `MAX_ITERATIONS` | `3` | Max refinement attempts per concept |
-| `Config.Refine` | `TARGET_ACCURACY` | `0.95` | Target attribute verification score |
 | `Config.Images` | `OUTPUT_IMAGE_SIZE` | `1024` | Output resolution (px) |
 
 ---
