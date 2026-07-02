@@ -30,7 +30,7 @@ diffusers.models.attention_processor.F.scaled_dot_product_attention = _stripped_
 
 from diffusers import DiffusionPipeline
 
-# ── Configurazione ───────────────────────────────────────────────────────────
+# ── Configuration ───────────────────────────────────────────────────────────
 FLUX_MODEL_DIR = "/leonardo_work/IscrC_MUSE/tballari/models_cache/FLUX.2-klein-9B"
 STEPS          = 4
 

@@ -11,15 +11,13 @@
 #SBATCH --output=logs/dreambench_eval/%j.out
 #SBATCH --error=logs/dreambench_eval/%j.err
 # ===========================================================================
-# Fase 4 — Valutazione DreamBench (DINO-I / CLIP-I / CLIP-T ufficiali).
+
+# DreamBench Evaluation(DINO-I / CLIP-I / CLIP-T).
 #
-# Valuta SOLO le immagini finali in $TEST_OUTPUT (già "full": originali
-# per non-rejected/graveyard, sovrascritte per recovered — vedi
-# refine_dreambench.py). Nessun bisogno di backup zero-shot separato.
-#
-# PREREQUISITO: evaluate_dreambench.py::_find_generated_images deve
-# escludere i residui "*_rejected_attempt*.png" lasciati da refine
-# (altrimenti le immagini recovered vengono contate/mediate due volte).
+# Evaluates ONLY the final images in $TEST_OUTPUT (already "full": original
+# for non-rejected/graveyard, overwritten for recovered, see
+# refine_dreambench.py). No need for a separate zero-shot backup.
+
 # ===========================================================================
 echo "=========================================================="
 echo "Job started at $(date)"
@@ -49,22 +47,22 @@ RESULTS_DIR=$TEST_DB_DIR/dreambench_metrics
 mkdir -p logs/dreambench_eval "$RESULTS_DIR"
 
 # ---------------------------------------------------------------------------
-# Sanity check 1: database esiste ed è quello giusto (dreambench, non perva)
+# Sanity check 1: database needs to exist and be the correct one (dreambench, not perva)
 # ---------------------------------------------------------------------------
 if [ ! -f "$TEST_DATABASE" ]; then
-    echo "❌ Database di test non trovato: $TEST_DATABASE"
+    echo "❌ Testing Database not found: $TEST_DATABASE"
     exit 1
 fi
 if grep -q "perva-data" "$TEST_DATABASE"; then
-    echo "❌ Il database contiene path di perva-data, non dreambench-data! Abort."
+    echo "❌ The database contains paths to perva-data, not dreambench-data! Abort."
     exit 1
 fi
 echo "✅ Database OK: $TEST_DATABASE"
 
 # ---------------------------------------------------------------------------
-# Sanity check 2: checkpoint HF offline presenti (CLIP-B/32 + DINO-vits16)
+# Sanity check 2:  HF offline checkpoints presents? (CLIP-B/32 + DINO-vits16)
 # ---------------------------------------------------------------------------
-echo "--- Sanity check modelli DreamBench ---"
+echo "--- Sanity check DreamBench models ---"
 python -c "
 from config import Config
 import os
@@ -76,13 +74,13 @@ for name in ['CLIP_DREAMBENCH_MODEL', 'DINO_DREAMBENCH_MODEL']:
         raise SystemExit(f'Checkpoint mancante: {path}')
 "
 if [ $? -ne 0 ]; then
-    echo "❌ Checkpoint HF mancanti. Con HF_HUB_OFFLINE=1 il job fallirebbe."
+    echo "❌ HF checkpoints missing. With HF_HUB_OFFLINE=1 the job would fail."
     exit 1
 fi
-echo "✅ Checkpoint presenti."
+echo "✅ Checkpoint presents."
 
 # ---------------------------------------------------------------------------
-# Sanity check 3: immagini reali dei concept NON puntano a perva-data
+# Sanity check 3: real concept images do not have to point to perva-data
 # ---------------------------------------------------------------------------
 python -c "
 import json
@@ -97,28 +95,28 @@ for cid, c in db.get('concept_dict', {}).items():
         if 'perva-data' in p:
             bad.append((cid, p))
 if bad:
-    print('❌ Immagini reali con path perva-data trovate:')
+    print('❌ Real concept images with path perva-data found:')
     for cid, p in bad[:10]:
         print(f'   {cid}: {p}')
     raise SystemExit(1)
-print('✅ Tutte le immagini reali puntano a dreambench-data.')
+print('✅ All real concept images point to dreambench-data.')
 "
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# Sanity check 4 (info, non blocca): quanti residui _rejected_attempt* ci sono
+# Sanity check 4 (info, does not block): how many residual _rejected_attempt* are there?
 # ---------------------------------------------------------------------------
 N_RESIDUI=$(find "$TEST_OUTPUT" -name "*_rejected_attempt*.png" | wc -l)
 echo "ℹ️  Residui _rejected_attempt*.png trovati in output: $N_RESIDUI"
 echo "   (devono essere esclusi dal glob in _find_generated_images — verifica che il fix sia applicato)"
 
 # ===========================================================================
-# Valutazione FULL (immagine finale per ogni concept/prompt/img_idx)
+# FULL evaluation (final image for each concept/prompt/img_idx)
 # ===========================================================================
 echo ""
-echo "[EVAL] Full (immagini finali post-refine): $TEST_OUTPUT"
+echo "[EVAL] Full (post-refine final images): $TEST_OUTPUT"
 CUDA_VISIBLE_DEVICES=0 python -u pipeline/evaluate_dreambench.py \
     --database "$TEST_DATABASE" \
     --output "$TEST_OUTPUT" \
@@ -128,6 +126,6 @@ CUDA_VISIBLE_DEVICES=0 python -u pipeline/evaluate_dreambench.py \
 
 echo ""
 echo "=========================================================="
-echo "Risultati in: $RESULTS_DIR/full/metrics_table.txt"
+echo "Results in: $RESULTS_DIR/full/metrics_table.txt"
 echo "Job finished at $(date)"
 echo "=========================================================="

@@ -417,7 +417,7 @@ def stage_refine(
                 output_dir, f"{concept_id}_generated_attempt{attempt}.png"
             )
 
-            # Seed distanziato per evitare correlazione tra tentativi
+            # Different SEED to avoid generating the same image again. Each attempt gets a new seed.
             new_seed = Config.Generate.SEED + attempt * 1000
 
             prompts_batch.append(new_prompt)
@@ -449,7 +449,7 @@ def stage_refine(
             missing_details_before = state["_missing_details_before"]
 
             if not success:
-                print(f"      [{concept_id}] ⚠️ Generazione FLUX fallita.")
+                print(f"      [{concept_id}] ⚠️ FLUX generation failed.")
                 state["attempts_log"].append(
                     _build_failed_generation_log_entry(
                         attempt=attempt,
@@ -635,7 +635,7 @@ def stage_final_judge(database_path: str, output_dir: str) -> None:
                 generated_image=gen_image_path,
                 reference_image=ref_image_path,
                 fingerprints=fingerprints,
-                prompt=actual_prompt,  # Ora passiamo il prompt esatto!
+                prompt=actual_prompt, 
             )
             results[concept_id] = judge_eval.to_dict()
             print(f"   ✅ {concept_id} | "
@@ -658,7 +658,7 @@ def stage_final_judge(database_path: str, output_dir: str) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="R2P-GEN Modulare (FLUX Edition)")
+    parser = argparse.ArgumentParser(description="R2P-GEN Modular (FLUX Edition)")
     parser.add_argument("--database", type=str, required=True)
     parser.add_argument("--output",   type=str, default="output")
     parser.add_argument("--stage",

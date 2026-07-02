@@ -18,7 +18,7 @@ Usage:
     python build_recovery_dashboard.py /path/to/output/test_100
 
 Reads (all from run_dir):
-    prompts.json            — source_image (reference) + output_image (prima generata)
+    prompts.json            — source_image (reference) + output_image (first generated)
     recovery_results.json   — results of the refine process per-concept + attempts_log (with vlm/clip per-attribute)
     rejected_concepts.json  — details of the base verify (vlm_history, clip_details, method…)
 
@@ -43,7 +43,7 @@ def load_json(path: str) -> dict:
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    print(f"  [WARNING] File non trovato: {path}")
+    print(f"  [WARNING] File not found: {path}")
     return {}
 
 
@@ -105,13 +105,13 @@ def find_rejected_original(output_dir: str, concept: str) -> str:
 
     IMPORTANT: 'concept' must be the raw key of the concept (e.g.,
     "<sng>"), not the "safe" version (without < >) used for file names
-    interni della dashboard: i file reali prodotti dalla pipeline mantengono
-    le parentesi angolari nel nome.
+    inside the dashboard: the real files produced by the pipeline keep
+    the angle brackets in the name.
 
     For concepts in graveyard (never recovered) this file never exists:
     _generated.png is never overwritten, so it remains simply the
     original generation — the caller must fallback to that
-    (first_gen_path / output_image of prompts.json).
+    (first_gen_path / output_image from prompts.json).
     """
     pattern = os.path.join(output_dir, f"{concept}_generated_rejected_attempt*.png")
     matches = sorted(glob.glob(pattern))
@@ -176,7 +176,7 @@ def build_vlm_attr_table(vlm_per_attr: dict) -> str:
         { "<attribute>": {"score":.., "yes_conf":.., "no_conf":.., "response":".."} }
     """
     if not vlm_per_attr:
-        return "<em style='color:#6e7681'>Nessun dato VLM per questo attempt.</em>"
+        return "<em style='color:#6e7681'>No VLM data for this attempt.</em>"
 
     rows = ""
     for attr, d in vlm_per_attr.items():
@@ -192,7 +192,7 @@ def build_vlm_attr_table(vlm_per_attr: dict) -> str:
 
     return f"""
     <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Attributo</th><th>Yes ↑</th><th>No</th><th>Risposta raw</th></tr></thead>
+        <thead><tr><th>Attribute</th><th>Yes ↑</th><th>No</th><th>Raw response</th></tr></thead>
         <tbody>{rows}</tbody>
     </table>"""
 
@@ -204,7 +204,7 @@ def build_clip_attr_table(clip_per_attr: dict) -> str:
         { "<attribute>": {"gen_score":.., "ref_score":.., "delta":..} }
     """
     if not clip_per_attr:
-        return "<em style='color:#6e7681'>Nessun dato CLIP per questo attempt.</em>"
+        return "<em style='color:#6e7681'>No CLIP data for this attempt.</em>"
 
     rows = ""
     for attr, d in clip_per_attr.items():
@@ -224,7 +224,7 @@ def build_clip_attr_table(clip_per_attr: dict) -> str:
 
     return f"""
     <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Attributo</th><th>Gen</th><th>Ref</th><th>Δ</th></tr></thead>
+        <thead><tr><th>Attribute</th><th>Gen</th><th>Ref</th><th>Δ</th></tr></thead>
         <tbody>{rows}</tbody>
     </table>"""
 
@@ -243,7 +243,7 @@ def build_verify_block(reject_data: dict) -> str:
 
     details = reject_data.get("details", {})
     if not details:
-        # Formato minimale (concept non aveva 'details')
+        # Minimal format (concept had no 'details')
         score   = reject_data.get("score", None)
         missing = reject_data.get("missing_details", [])
         tags    = "".join(f'<span class="attr-tag attr-fail">{h(a)}</span>' for a in missing)
@@ -252,7 +252,7 @@ def build_verify_block(reject_data: dict) -> str:
             <summary>🔎 Verify base</summary>
             <div class="toggle-body">
                 <div class="kv-row"><span class="kv-key">Score</span><span class="kv-val" style="color:{score_color(score)}">{fmt(score)}</span></div>
-                <div class="block-label" style="margin-top:8px">Attributi mancanti</div>
+                <div class="block-label" style="margin-top:8px">Missing attributes</div>
                 <div style="margin-top:4px">{tags or '<em>—</em>'}</div>
             </div>
         </details>"""
@@ -265,7 +265,7 @@ def build_verify_block(reject_data: dict) -> str:
     # ── VLM history ──────────────────────────────────────────
     vlm_history = details.get("vlm_history", [])
 
-    # Raggruppa per fase
+    # Group by phase
     phases = {}
     for entry in vlm_history:
         phase = entry.get("phase", "unknown")
@@ -294,9 +294,9 @@ def build_verify_block(reject_data: dict) -> str:
 
     vlm_table = f"""
     <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Attributo</th><th>Yes ↑</th><th>No</th><th>Risposta raw</th></tr></thead>
+        <thead><tr><th>Attribute</th><th>Yes ↑</th><th>No</th><th>Raw response</th></tr></thead>
         <tbody>{vlm_rows}</tbody>
-    </table>""" if vlm_rows else "<em style='color:#6e7681'>Nessun log VLM disponibile.</em>"
+    </table>""" if vlm_rows else "<em style='color:#6e7681'>No VLM log available.</em>"
 
     # ── CLIP breakdown ────────────────────────────────────────
     clip_gen = details.get("clip_details", {}).get("gen", {})
@@ -316,34 +316,34 @@ def build_verify_block(reject_data: dict) -> str:
 
     clip_table = f"""
     <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Attributo</th><th>Gen</th><th>Ref</th><th>Δ</th></tr></thead>
+        <thead><tr><th>Attribute</th><th>Gen</th><th>Ref</th><th>Δ</th></tr></thead>
         <tbody>{clip_rows}</tbody>
-    </table>""" if clip_rows else "<em style='color:#6e7681'>Nessun dato CLIP.</em>"
+    </table>""" if clip_rows else "<em style='color:#6e7681'>No CLIP data.</em>"
 
-    # ── Attributi mancanti originali ──────────────────────────
+    # ── Original missing attributes ──────────────────────────
     failed_attrs = details.get("failed_attributes", reject_data.get("missing_details", []))
     attr_tags = "".join(f'<span class="attr-tag attr-fail">{h(a)}</span>' for a in failed_attrs) or "<em>—</em>"
 
     return f"""
     <details class="section-toggle">
-        <summary>🔎 Verify base — dettaglio completo</summary>
+        <summary>🔎 Base verify — full details</summary>
         <div class="toggle-body">
             <div class="kv-grid">
-                <div class="kv-row"><span class="kv-key">Metodo decisione</span><span class="kv-val" style="color:{method_color};font-weight:700">{h(method)}</span></div>
-                <div class="kv-row"><span class="kv-key">Score finale</span><span class="kv-val" style="color:{score_color(score)}">{fmt(score)}</span></div>
+                <div class="kv-row"><span class="kv-key">Decision method</span><span class="kv-val" style="color:{method_color};font-weight:700">{h(method)}</span></div>
+                <div class="kv-row"><span class="kv-key">Final score</span><span class="kv-val" style="color:{score_color(score)}">{fmt(score)}</span></div>
                 <div class="kv-row"><span class="kv-key">Reason</span><span class="kv-val" style="color:#8b949e">{h(reason)}</span></div>
             </div>
 
-            <div class="block-label" style="margin-top:12px">Attributi falliti</div>
+            <div class="block-label" style="margin-top:12px">Failed attributes</div>
             <div style="margin-top:4px">{attr_tags}</div>
 
             <details class="section-toggle" style="margin-top:12px">
-                <summary>📊 VLM log completo ({len(vlm_history)} check)</summary>
+                <summary>📊 Full VLM log ({len(vlm_history)} checks)</summary>
                 <div class="toggle-body">{vlm_table}</div>
             </details>
 
             <details class="section-toggle" style="margin-top:8px">
-                <summary>📐 CLIP breakdown per attributo</summary>
+                <summary>📐 CLIP breakdown by attribute</summary>
                 <div class="toggle-body">{clip_table}</div>
             </details>
         </div>
@@ -356,7 +356,7 @@ def build_verify_block(reject_data: dict) -> str:
 
 def build_attempt_details(attempt: dict) -> str:
     """
-    Details of a single attempt of the refine: prompt, overall score,
+    Details of a single refine attempt: prompt, overall score,
     decision method, missing attributes, and the complete breakdown
     VLM/CLIP per-attribute (from attempt["vlm_per_attribute"] / ["clip_per_attribute"],
     extracted directly from the output of verify_generation_r2p).
@@ -370,31 +370,31 @@ def build_attempt_details(attempt: dict) -> str:
 
     attr_tags = "".join(
         f'<span class="attr-tag attr-fail">{h(a)}</span>' for a in missing
-    ) or '<span class="attr-tag attr-ok">✅ nessuno</span>'
+    ) or '<span class="attr-tag attr-ok">✅ none</span>'
 
     metrics = f"""
     <div class="kv-grid" style="margin-bottom:6px">
         <div class="kv-row"><span class="kv-key">Score</span><span class="kv-val" style="color:{score_color(score)}">{fmt(score)}</span></div>
-        <div class="kv-row"><span class="kv-key">Metodo decisione</span><span class="kv-val" style="color:#8b949e">{h(method)}</span></div>
+        <div class="kv-row"><span class="kv-key">Decision method</span><span class="kv-val" style="color:#8b949e">{h(method)}</span></div>
     </div>"""
 
     return f"""
     <div class="toggle-body">
         {metrics}
-        <div class="block-label">Attributi ancora mancanti dopo questo tentativo</div>
+        <div class="block-label">Attributes still missing after this attempt</div>
         <div style="margin-top:4px;margin-bottom:10px">{attr_tags}</div>
 
         <details class="section-toggle">
-            <summary>📊 VLM per attributo ({len(vlm_pa)})</summary>
+            <summary>📊 VLM by attribute ({len(vlm_pa)})</summary>
             <div class="toggle-body">{build_vlm_attr_table(vlm_pa)}</div>
         </details>
 
         <details class="section-toggle" style="margin-top:8px">
-            <summary>📐 CLIP per attributo ({len(clip_pa)})</summary>
+            <summary>📐 CLIP by attribute ({len(clip_pa)})</summary>
             <div class="toggle-body">{build_clip_attr_table(clip_pa)}</div>
         </details>
 
-        <div class="block-label" style="margin-top:12px">Prompt usato</div>
+        <div class="block-label" style="margin-top:12px">Prompt used</div>
         <div class="prompt-text" style="margin-top:4px">{h(prompt)}</div>
     </div>"""
 
@@ -407,34 +407,34 @@ def build_timeline(concept: str, safe_name: str, status: str,
                    first_gen_path: str, attempts_log: list,
                    final_path: str, assets_abs: str, assets_rel: str) -> str:
     """
-    Costruisce la timeline orizzontale:
-      [Generata orig] → [Attempt 1] → [Attempt 2] → … → [Finale / Graveyard]
+        Builds the horizontal timeline:
+            [Original generated] → [Attempt 1] → [Attempt 2] → … → [Final / Graveyard]
 
-    concept        : chiave GREZZA del concept (es. "<sng>") — serve per cercare
-                      i file su disco, che mantengono le parentesi angolari.
-    first_gen_path : output_image da prompts.json (la prima generata, prima del refine)
-    attempts_log   : lista dei tentativi dal recovery_results.json
-    final_path     : recovered_image_path (None se graveyard)
+    concept        : raw concept key (e.g. "<sng>") — used to search
+                      files on disk, which keep the angle brackets.
+    first_gen_path : output_image from prompts.json (the first generated image, before refine)
+    attempts_log   : list of attempts from recovery_results.json
+    final_path     : recovered_image_path (None for graveyard)
 
-    Per i PASSED non c'è refine quindi la timeline è solo [Prima generata].
+    For PASSED concepts there is no refine, so the timeline is only [Original generated].
     """
     cells = []
 
-    # Cella 0 — immagine generata originale (quella che ha fallito il verify, o la finale se passed)
-    orig_label = "Generata originale"
-    # Se il concept è entrato nel refine ED è stato recuperato, esiste anche un
-    # file "<concept>_generated_rejected_attemptN.png" (N variabile) che
-    # contiene il backup della generazione originale, salvato da flux_loop.py
-    # prima di sovrascrivere _generated.png con l'immagine recuperata.
-    # Per i graveyard questo file non esiste mai: _generated.png resta la
-    # generazione originale, quindi va bene first_gen_path come fallback.
+    # Cell 0 — original generated image (the one that failed verify, or the final one if passed)
+    orig_label = "Original generated"
+    # If the concept entered refine AND was recovered, there is also a
+    # "<concept>_generated_rejected_attemptN.png" file (variable N) that
+    # stores the backup of the original generation, saved by flux_loop.py
+    # before overwriting _generated.png with the recovered image.
+    # For graveyard concepts this file never exists: _generated.png remains the
+    # original generation, so first_gen_path is a valid fallback.
     run_dir = os.path.dirname(assets_abs)
     rejected0 = find_rejected_original(run_dir, concept)
 
     orig_path = rejected0 if rejected0 else first_gen_path
     cells.append(img_cell(orig_label, orig_path, assets_abs, assets_rel, safe_name, "orig"))
 
-    # Celle per ogni tentativo del refine
+    # Cells for each refine attempt
     for att in attempts_log:
         n        = att.get("attempt", "?")
         img_path = att.get("image_path", "")
@@ -444,12 +444,12 @@ def build_timeline(concept: str, safe_name: str, status: str,
         cells.append(arrow_cell())
         cells.append(img_cell(label, img_path, assets_abs, assets_rel, safe_name, f"att{n}", extra))
 
-    # Cella finale (solo se recovered e diversa dall'ultimo attempt)
+    # Final cell (only if recovered and different from the last attempt)
     if status == "recovered" and final_path and attempts_log:
         last_att_path = attempts_log[-1].get("image_path", "")
         if os.path.abspath(final_path) != os.path.abspath(last_att_path or ""):
             cells.append(arrow_cell())
-            cells.append(img_cell("✅ Finale accettata", final_path,
+            cells.append(img_cell("✅ Accepted final", final_path,
                                   assets_abs, assets_rel, safe_name, "final", "cell-success"))
 
     return f'<div class="timeline">{"".join(cells)}</div>'
@@ -466,13 +466,13 @@ def build_passed_card(concept: str, safe_name: str, p_data: dict,
     prompt   = p_data.get("flux_prompt", "")
 
     ref_cell = img_cell("📷 Reference", ref_path, assets_abs, assets_rel, safe_name, "ref")
-    gen_cell = img_cell("✅ Generata", gen_path, assets_abs, assets_rel, safe_name, "gen", "cell-success")
+    gen_cell = img_cell("✅ Generated", gen_path, assets_abs, assets_rel, safe_name, "gen", "cell-success")
 
     return f"""
     <div class="card passed" data-status="passed" data-concept="{h(safe_name)}">
         <div class="card-header">
             <code class="concept-name">{h(concept)}</code>
-            <span class="badge badge-passed">✅ PASSED — primo verify</span>
+            <span class="badge badge-passed">✅ PASSED — first verify</span>
         </div>
         <div class="timeline">
             {ref_cell}
@@ -480,7 +480,7 @@ def build_passed_card(concept: str, safe_name: str, p_data: dict,
             {gen_cell}
         </div>
         <details class="section-toggle" style="margin-top:10px">
-            <summary>📝 Prompt usato</summary>
+            <summary>📝 Prompt used</summary>
             <div class="toggle-body">
                 <div class="prompt-text">{h(prompt)}</div>
             </div>
@@ -533,7 +533,7 @@ def build_recovered_card(concept: str, safe_name: str,
 
         <div class="kv-grid" style="margin-bottom:10px">
             <div class="kv-row"><span class="kv-key">Final score</span><span class="kv-val" style="color:{score_color(final_score)}">{fmt(final_score)}</span></div>
-            <div class="kv-row"><span class="kv-key">Metodo successo</span><span class="kv-val" style="color:#79c0ff">{h(last_method)}</span></div>
+            <div class="kv-row"><span class="kv-key">Success method</span><span class="kv-val" style="color:#79c0ff">{h(last_method)}</span></div>
         </div>
 
         <div class="two-col">
@@ -542,28 +542,28 @@ def build_recovered_card(concept: str, safe_name: str,
                 {ref_cell.replace('class="tl-cell "', 'style="display:block"')}
             </div>
             <div style="flex:3">
-                <div class="tl-label" style="margin-bottom:6px">Timeline generazione</div>
+                <div class="tl-label" style="margin-bottom:6px">Generation timeline</div>
                 {timeline}
             </div>
         </div>
 
-        <div class="block-label" style="margin-top:12px">Attributi che mancavano</div>
+        <div class="block-label" style="margin-top:12px">Missing attributes</div>
         <div style="margin-top:4px;margin-bottom:10px">{fail_tags or '<em>—</em>'}</div>
 
         {verify_block}
 
         <details class="section-toggle" style="margin-top:8px">
-            <summary>📝 Prompt: originale → rewritten</summary>
+            <summary>📝 Prompt: original → rewritten</summary>
             <div class="toggle-body">
-                <div class="block-label">Originale</div>
+                <div class="block-label">Original</div>
                 <div class="prompt-text">{h(orig_prompt)}</div>
-                <div class="block-label" style="margin-top:8px">Ultimo rewrite</div>
+                <div class="block-label" style="margin-top:8px">Last rewrite</div>
                 <div class="prompt-text" style="color:#a5d6ff">{h(rewritten)}</div>
             </div>
         </details>
 
         <details class="section-toggle" style="margin-top:8px">
-            <summary>🔁 Dettaglio attempt per attempt ({n_attempts})</summary>
+            <summary>🔁 Attempt-by-attempt details ({n_attempts})</summary>
             <div class="toggle-body">{att_details}</div>
         </details>
     </div>"""
@@ -586,7 +586,7 @@ def build_graveyard_card(concept: str, safe_name: str,
 
     fail_tags = "".join(f'<span class="attr-tag attr-fail">{h(a)}</span>' for a in original_fail)
     last_tags = "".join(f'<span class="attr-tag attr-fail">{h(a)}</span>' for a in last_missing) \
-                or '<span class="attr-tag attr-ok">✅ nessuno</span>'
+                or '<span class="attr-tag attr-ok">✅ none</span>'
 
     ref_cell = img_cell("📷 Reference", ref_path, assets_abs, assets_rel, safe_name, "ref")
     timeline = build_timeline(concept, safe_name, "unrecoverable",
@@ -624,7 +624,7 @@ def build_graveyard_card(concept: str, safe_name: str,
                 <span class="kv-val" style="color:#79c0ff">{n_attempts}</span>
             </div>
             <div class="kv-row">
-                <span class="kv-key">Ultimo metodo</span>
+                <span class="kv-key">Last method</span>
                 <span class="kv-val" style="color:#8b949e">{h(last_method)}</span>
             </div>
         </div>
@@ -635,18 +635,18 @@ def build_graveyard_card(concept: str, safe_name: str,
                 {ref_cell.replace('class="tl-cell "', 'style="display:block"')}
             </div>
             <div style="flex:3">
-                <div class="tl-label" style="margin-bottom:6px">Timeline generazione</div>
+                <div class="tl-label" style="margin-bottom:6px">Generation timeline</div>
                 {timeline}
             </div>
         </div>
 
         <div style="margin-top:12px;display:flex;gap:24px;flex-wrap:wrap">
             <div>
-                <div class="block-label">Mancava all'inizio</div>
+                <div class="block-label">Missing at the start</div>
                 <div style="margin-top:4px">{fail_tags or '<em>—</em>'}</div>
             </div>
             <div>
-                <div class="block-label">Mancava alla fine</div>
+                <div class="block-label">Missing at the end</div>
                 <div style="margin-top:4px">{last_tags}</div>
             </div>
         </div>
@@ -654,17 +654,17 @@ def build_graveyard_card(concept: str, safe_name: str,
         {verify_block}
 
         <details class="section-toggle" style="margin-top:8px">
-            <summary>📝 Prompt: originale → ultimo rewrite</summary>
+            <summary>📝 Prompt: original → last rewrite</summary>
             <div class="toggle-body">
-                <div class="block-label">Originale</div>
+                <div class="block-label">Original</div>
                 <div class="prompt-text">{h(orig_prompt)}</div>
-                <div class="block-label" style="margin-top:8px">Ultimo rewrite</div>
+                <div class="block-label" style="margin-top:8px">Last rewrite</div>
                 <div class="prompt-text" style="color:#ffa657">{h(rewritten)}</div>
             </div>
         </details>
 
         <details class="section-toggle" style="margin-top:8px" open>
-            <summary>🔁 Dettaglio attempt per attempt ({n_attempts})</summary>
+            <summary>🔁 Attempt-by-attempt details ({n_attempts})</summary>
             <div class="toggle-body">{att_details}</div>
         </details>
     </div>"""
@@ -864,7 +864,7 @@ body {
     padding: 0 4px;
     align-self: center;
     flex-shrink: 0;
-    margin-top: -16px; /* allinea visivamente al centro immagine */
+    margin-top: -16px; /* visually align with the image center */
 }
 
 /* ── KV rows ── */
@@ -986,7 +986,7 @@ function refresh() {
         const searchOk = !currentSearch || card.dataset.concept.includes(currentSearch);
         card.classList.toggle('hidden', !(statusOk && searchOk));
     });
-    // Mostra/nascondi section headers
+    // Show/hide section headers
     [['passed','passed'],['recovered','recovered'],['unrecoverable','graveyard']].forEach(([status, cls]) => {
         const hdr = document.getElementById('hdr-' + cls);
         const grid = document.getElementById('grid-' + cls);
@@ -1006,15 +1006,15 @@ function refresh() {
 def build_dashboard(run_dir: str):
     run_dir = os.path.abspath(run_dir)
 
-    # Auto-detect se mancano i file obbligatori
+    # Auto-detect if required files are missing
     if not os.path.isfile(os.path.join(run_dir, "prompts.json")):
-        print(f"  [INFO] prompts.json non trovato in {run_dir}, cerco ultima run...")
+        print(f"  [INFO] prompts.json not found in {run_dir}, searching for the latest run...")
         latest = find_latest_run(run_dir)
         if latest:
-            print(f"  [INFO] Trovata run: {latest}")
+            print(f"  [INFO] Found run: {latest}")
             run_dir = latest
         else:
-            print(f"  [ERROR] Nessuna run valida trovata.")
+            print(f"  [ERROR] No valid run found.")
             sys.exit(1)
 
     run_name   = os.path.basename(run_dir)
@@ -1033,7 +1033,7 @@ def build_dashboard(run_dir: str):
     print(f"  recovery_results   : {len(recovery_data)} entries")
     print(f"  rejected_concepts  : {len(rejected_data)} entries")
 
-    # ── Classifica ogni concept nei tre gruppi ──────────────────
+    # ── Classify each concept into the three groups ──────────────────
     all_concepts = set(prompts_data.keys())
     recovery_concepts = set(recovery_data.keys())
     passed_concepts = all_concepts - recovery_concepts
@@ -1074,7 +1074,7 @@ def build_dashboard(run_dir: str):
     print(f"  Passed: {n_passed}  |  Recovered: {n_rec}  |  Graveyard: {n_grave}")
 
     def section(hdr_id, grid_id, hdr_cls, hdr_label, cards):
-        inner = "".join(cards) if cards else '<div class="no-results">Nessun concept in questo gruppo.</div>'
+        inner = "".join(cards) if cards else '<div class="no-results">No concepts in this group.</div>'
         return f"""
         <div class="section-header {hdr_cls}" id="{hdr_id}">{hdr_label}</div>
         <div class="grid" id="{grid_id}">{inner}</div>"""
@@ -1092,14 +1092,14 @@ def build_dashboard(run_dir: str):
 <div class="header">
     <h1>🔬 R2P-GEN Dashboard &nbsp;·&nbsp; <span class="run-tag">{h(run_name)}</span></h1>
     <div class="stats">
-        <div class="stat"><div class="stat-val" style="color:#c9d1d9">{n_total}</div><div class="stat-lbl">Totale</div></div>
+        <div class="stat"><div class="stat-val" style="color:#c9d1d9">{n_total}</div><div class="stat-lbl">Total</div></div>
         <div class="stat"><div class="stat-val" style="color:#3fb950">{n_passed}</div><div class="stat-lbl">Passed</div></div>
         <div class="stat"><div class="stat-val" style="color:#79c0ff">{n_rec}</div><div class="stat-lbl">Recovered</div></div>
         <div class="stat"><div class="stat-val" style="color:#f85149">{n_grave}</div><div class="stat-lbl">Graveyard</div></div>
         <div class="stat"><div class="stat-val" style="color:#ffa657">{fail_rate}%</div><div class="stat-lbl">Fail rate</div></div>
     </div>
     <div class="filters">
-        <button class="filter-btn active" onclick="applyFilter('all',this)">Tutti ({n_total})</button>
+        <button class="filter-btn active" onclick="applyFilter('all',this)">All ({n_total})</button>
         <button class="filter-btn" onclick="applyFilter('passed',this)">✅ Passed ({n_passed})</button>
         <button class="filter-btn" onclick="applyFilter('recovered',this)">🔄 Recovered ({n_rec})</button>
         <button class="filter-btn" onclick="applyFilter('unrecoverable',this)">💀 Graveyard ({n_grave})</button>
@@ -1119,8 +1119,8 @@ def build_dashboard(run_dir: str):
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
 
-    print(f"\n✅ Dashboard pronta: {out_path}")
-    print(f"\nPer visualizzare:")
+    print(f"\n✅ Dashboard ready: {out_path}")
+    print(f"\nTo view:")
     print(f"  cd '{run_dir}'")
     print(f"  python -m http.server 18082")
     print(f"  → http://localhost:18082/recovery_dashboard.html")
